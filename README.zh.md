@@ -6,7 +6,7 @@
 
 ## 概述
 
-InvestmentOS 把投资决策过程工程化：从宏观环境判断、估值分析、买入点识别，到止损和复盘，每一步都固化成可复述、可回测的规则，收敛成统一的信号语言。目标是让纪律由系统执行，弱化人性的弱点——追涨杀跌、该止损时犹豫。
+InvestmentOS 把投资决策过程工程化：从宏观环境判断、估值分析、买入点识别，到止损和复盘，每一步都固化成可复述、可回测的规则。在确定性引擎之上，还有一个多智能体 LLM 辩论引擎，把相互冲突的观点综合成结构化的决策。目标是让纪律由系统执行，弱化人性的弱点——追涨杀跌、该止损时犹豫。
 
 这不是高频交易。系统的节奏是按天、按周、按月，低频但严格。追求的不是速度，是纪律的确定性。
 
@@ -15,6 +15,30 @@ InvestmentOS 把投资决策过程工程化：从宏观环境判断、估值分�
 - **方法论沉淀** — 每一类决策（买点、估值、止损、支撑位）都沉淀成可复述、可回测的规则。
 - **信号系统化** — 把十几个分散的指标（宏观、估值、趋势、情绪）收敛成一套统一的信号语言。
 - **纪律交给机器** — 纪律是反人性的，所以交给代码。
+
+## AI 是怎么用的
+
+InvestmentOS 有两层，分工明确：
+
+- **确定性引擎**（`engine/`）——规则和回测。市场状态、估值、支撑位、Black-Scholes。纯数学，零第三方依赖。
+- **LLM 辩论引擎**（`debate_engine/`）——多智能体辩论，把原始数据变成结构化决策。
+
+辩论引擎编排了多个 LLM agent，形成一条流水线：
+
+```
+AnalysisInput → 情景辩论（多 vs 空）→ 情景裁判
+              → 模拟交易员 → 风控辩论（激进 / 保守 / 中性）
+              → 组合经理 → DebateResult
+```
+
+设计亮点：
+
+- **对抗式辩论** —— 多头和空头 agent 互相攻辩，而不是让单个 LLM 给出一个观点。
+- **分层模型** —— 裁判/PM 节点用更强的模型（`deepseek-v4-pro`），辩手用更快的（`deepseek-v4-flash`）。
+- **上下文压缩** —— 压缩器把多轮辩论的上下文控制在 16K token 以内。
+- **影子模式** —— 辩论先与基线并行运行，验证有效后才替换基线。
+
+LLM 产出的是**建议**，不是指令。这里没有任何东西会自动下单。
 
 ## 免责声明
 
@@ -41,13 +65,13 @@ python3 engine/examples/demo_options.py
 python3 engine/buy_point_engine.py SPY
 ```
 
-核心引擎只依赖 Python 标准库，无需第三方包。例外是 `macro_pipeline.py`，它需要 `akshare`、`pandas`、`numpy`（见 `requirements.txt`）。
+确定性引擎只依赖 Python 标准库。辩论引擎（`debate_engine/`）还需要 `pydantic` 和 `langchain-openai`，以及 `DEEPSEEK_API_KEY` 环境变量。`macro_pipeline.py` 需要 `akshare`、`pandas`、`numpy`。见 `requirements.txt`。
 
 ## 目录结构
 
 ```
 investment-os/
-├── engine/                          # 纯决策引擎（零第三方依赖）
+├── engine/                          # 确定性决策引擎（零第三方依赖）
 │   ├── market_state_engine.py       # 市场状态：5 姿势聚合
 │   ├── bottom_accelerator.py        # 底部加速：对数线性趋势线 + DCA 倍率
 │   ├── valuation_engine.py          # 估值：分类 PE/PB 分位
@@ -59,6 +83,12 @@ investment-os/
 │   ├── support_levels.py            # 支撑位提取
 │   ├── methodologies/               # 5 套市场方法论（插件层）
 │   └── examples/                    # 可运行示例
+├── debate_engine/                   # LLM 多智能体辩论引擎
+│   ├── engine.py                    # 编排（多空 → 裁判 → 交易员 → 风控 → PM）
+│   ├── prompts.py / zh_prompts.py   # 提示词（英文 / 中文）
+│   ├── compressor.py                # 多轮辩论的上下文压缩
+│   ├── quality.py                   # 论证质量评估
+│   └── state.py / config.py         # 数据模型 / 配置
 ├── backtest/                        # 回测脚本（整理中）
 ├── data/                            # 示例数据（底部档案）
 └── docs/                            # 方法论与限制（整理中）
@@ -94,6 +124,7 @@ investment-os/
 
 | 限制 | 现状 |
 |------|------|
+| 辩论引擎输出质量依赖底层 LLM | 影子模式验证后才转正式 |
 | 宏观 DCA 倍率未接入建仓 | 信号已产出，仅展示 |
 | A 股缺周期管理器 | 美股有 3 信号状态机，A 股没有 |
 | 温度权重是经验设定 | 计划积累 2 年+ 数据后反推 |

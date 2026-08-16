@@ -1,9 +1,15 @@
-# InvestmentOS showcase — 核心引擎零第三方依赖（纯 Python 标准库）
+# InvestmentOS showcase — 分层依赖
 #
-# 仅 macro_pipeline.py（宏观数据采集）需要以下依赖：
+# 核心引擎（engine/）：零第三方依赖，纯 Python 标准库。
+#
+# AI 辩论层（debate_engine/）：
+pydantic>=2.0
+langchain-openai>=0.1
+#
+# 宏观数据采集（engine/macro_pipeline.py）：
 akshare>=1.14
 pandas>=2.0
 numpy>=1.24
-
+#
 # 可选：回测脚本如需绘图
 # matplotlib>=3.7
