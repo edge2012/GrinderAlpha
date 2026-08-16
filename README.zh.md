@@ -65,7 +65,40 @@ python3 engine/examples/demo_options.py
 python3 engine/buy_point_engine.py SPY
 ```
 
-确定性引擎只依赖 Python 标准库。辩论引擎（`debate_engine/`）还需要 `pydantic` 和 `langchain-openai`，以及 `DEEPSEEK_API_KEY` 环境变量。`macro_pipeline.py` 需要 `akshare`、`pandas`、`numpy`。见 `requirements.txt`。
+确定性引擎只依赖 Python 标准库。`macro_pipeline.py` 需要 `akshare`、`pandas`、`numpy`。见 `requirements.txt`。
+
+## 配置
+
+大多数功能不需要 API key——只有 LLM 辩论引擎需要一个。
+
+| 功能 | 需要的 key | 说明 |
+|------|-----------|------|
+| 确定性引擎（姿势、估值、期权、支撑位） | 无 | 免费公开数据（腾讯行情、CBOE） |
+| BuyPointEngine 方法论（A/H、价值、成长、拐点） | 无 | 腾讯行情，无需 key |
+| `trend_etf.py`（美股 ETF 月K） | `ALPHA_VANTAGE_API_KEY` | 免费 key；缺失会优雅降级 |
+| `debate_engine/`（LLM 辩论） | `DEEPSEEK_API_KEY` | 来自 DeepSeek 平台 |
+
+### 设置 key
+
+两种方式任选其一：
+
+**方式一 —— 环境变量：**
+
+```bash
+export DEEPSEEK_API_KEY=sk-...
+export ALPHA_VANTAGE_API_KEY=...
+```
+
+**方式二 —— `.env` 文件**（辩论引擎会自动加载）：
+
+```bash
+# 项目根目录下的 .env
+DEEPSEEK_API_KEY=sk-...
+DEEPSEEK_BASE_URL=https://api.deepseek.com/v1
+ALPHA_VANTAGE_API_KEY=...
+```
+
+辩论引擎的配置加载器会自动读取 `.env`（路径通过 `DOTENV_PATH` 指定，默认 `.env`），并且只设置环境里还不存在的变量——所以环境变量永远优先。`.env` 文件已被 gitignore，不要把 key 提交进版本控制。
 
 ## 目录结构
 

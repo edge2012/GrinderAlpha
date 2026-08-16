@@ -65,7 +65,40 @@ python3 engine/examples/demo_options.py
 python3 engine/buy_point_engine.py SPY
 ```
 
-The deterministic engines depend only on the Python standard library. The debate engine (`debate_engine/`) additionally needs `pydantic` and `langchain-openai`, plus a `DEEPSEEK_API_KEY` environment variable. `macro_pipeline.py` needs `akshare`, `pandas`, and `numpy`. See `requirements.txt`.
+The deterministic engines depend only on the Python standard library. `macro_pipeline.py` needs `akshare`, `pandas`, and `numpy`. See `requirements.txt`.
+
+## Configuration
+
+Most features need no API key — only the LLM debate engine requires one.
+
+| Feature | Key required | Notes |
+|---------|-------------|-------|
+| Deterministic engines (posture, valuation, options, support) | None | Free public data (Tencent quotes, CBOE) |
+| BuyPointEngine methodologies (A/H, value, growth, turnaround) | None | Tencent quotes, no key |
+| `trend_etf.py` (US ETF monthly bars) | `ALPHA_VANTAGE_API_KEY` | Free key; degrades gracefully if missing |
+| `debate_engine/` (LLM debate) | `DEEPSEEK_API_KEY` | From the DeepSeek platform |
+
+### Setting keys
+
+Either approach works:
+
+**Option 1 — environment variables:**
+
+```bash
+export DEEPSEEK_API_KEY=sk-...
+export ALPHA_VANTAGE_API_KEY=...
+```
+
+**Option 2 — a `.env` file** (auto-loaded by the debate engine):
+
+```bash
+# .env in the project root
+DEEPSEEK_API_KEY=sk-...
+DEEPSEEK_BASE_URL=https://api.deepseek.com/v1
+ALPHA_VANTAGE_API_KEY=...
+```
+
+The debate engine's config loader reads `.env` automatically (path via `DOTENV_PATH`, default `.env`) and only sets variables not already in the environment — so env vars always win. The `.env` file is gitignored, so your keys stay out of version control.
 
 ## Repository Structure
 
