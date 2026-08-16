@@ -195,7 +195,10 @@ def _derive_direction(klines: list) -> dict:
 def get_valuation_snapshot(code: str) -> dict:
     """获取估值快照"""
     try:
-        from valuation_engine import evaluate_etf
+        try:
+            from .valuation_engine import evaluate_etf
+        except ImportError:
+            from valuation_engine import evaluate_etf
         result = evaluate_etf(code)
         return {
             "score": result.composite_score,

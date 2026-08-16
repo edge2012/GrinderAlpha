@@ -16,7 +16,7 @@ import urllib.request
 import json
 import time
 from typing import Optional, List, Tuple
-from methodologies.base import (
+from .base import (
     BaseMethodology,
     BuyPointResult,
     Market,

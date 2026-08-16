@@ -62,7 +62,7 @@ python3 -c "from engine.options_estimator import bs_put_price; print(bs_put_pric
 python3 engine/examples/demo_options.py
 
 # 3. 买入点路由（完整输出需要实时行情 + API key）
-python3 engine/buy_point_engine.py SPY
+python3 -m engine.buy_point_engine SPY
 ```
 
 确定性引擎只依赖 Python 标准库。`macro_pipeline.py` 需要 `akshare`、`pandas`、`numpy`。见 `requirements.txt`。

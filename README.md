@@ -62,7 +62,7 @@ python3 -c "from engine.options_estimator import bs_put_price; print(bs_put_pric
 python3 engine/examples/demo_options.py
 
 # 3. Buy-point routing (full output needs live market data + API keys)
-python3 engine/buy_point_engine.py SPY
+python3 -m engine.buy_point_engine SPY
 ```
 
 The deterministic engines depend only on the Python standard library. `macro_pipeline.py` needs `akshare`, `pandas`, and `numpy`. See `requirements.txt`.

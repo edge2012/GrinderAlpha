@@ -17,7 +17,7 @@ import sys
 import urllib.request
 import json
 from typing import Optional
-from methodologies.base import (
+from .base import (
     BaseMethodology,
     BuyPointResult,
     Market,

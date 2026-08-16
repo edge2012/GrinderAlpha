@@ -6,11 +6,11 @@ BuyPointEngine — 买入点判断引擎（顶层入口）
 统一API，按市场+标的类型自动路由到对应方法论。
 
 用法:
-  python3 engine/buy_point_engine.py SPY          # 美股ETF → TrendETF
-  python3 engine/buy_point_engine.py ADBE         # 美股价值 → ValueUS
-  python3 engine/buy_point_engine.py HOOD         # 美股成长 → GrowthUS
-  python3 engine/buy_point_engine.py 600519       # A股 → SniperAH
-  python3 engine/buy_point_engine.py 09988        # 港股 → SniperAH
+  python3 -m engine.buy_point_engine SPY          # 美股ETF → TrendETF
+  python3 -m engine.buy_point_engine ADBE         # 美股价值 → ValueUS
+  python3 -m engine.buy_point_engine HOOD         # 美股成长 → GrowthUS
+  python3 -m engine.buy_point_engine 600519       # A股 → SniperAH
+  python3 -m engine.buy_point_engine 09988        # 港股 → SniperAH
 
 输出: JSON格式 BuyPointResult
 """
@@ -20,7 +20,7 @@ import sys
 import json
 import argparse
 from typing import Optional, Dict
-from methodologies.base import (
+from .methodologies.base import (
     BuyPointResult,
     Market,
     MethodologyType,
@@ -56,19 +56,19 @@ class BuyPointEngine:
         """延迟加载方法论实例。"""
         if mtype not in self._methods:
             if mtype == MethodologyType.SNIPER_AH:
-                from methodologies.sniper_ah import SniperAHMethodology
+                from .methodologies.sniper_ah import SniperAHMethodology
                 self._methods[mtype] = SniperAHMethodology()
             elif mtype == MethodologyType.TREND_ETF:
-                from methodologies.trend_etf import TrendETFMethodology
+                from .methodologies.trend_etf import TrendETFMethodology
                 self._methods[mtype] = TrendETFMethodology()
             elif mtype == MethodologyType.VALUE_US:
-                from methodologies.value_us import ValueUSMethodology
+                from .methodologies.value_us import ValueUSMethodology
                 self._methods[mtype] = ValueUSMethodology()
             elif mtype == MethodologyType.GROWTH_US:
-                from methodologies.growth_us import GrowthUSMethodology
+                from .methodologies.growth_us import GrowthUSMethodology
                 self._methods[mtype] = GrowthUSMethodology()
             elif mtype == MethodologyType.TURNAROUND_US:
-                from methodologies.turnaround_us import TurnaroundUSMethodology
+                from .methodologies.turnaround_us import TurnaroundUSMethodology
                 self._methods[mtype] = TurnaroundUSMethodology()
             else:
                 raise ValueError(f"不支持的方法论: {mtype}")

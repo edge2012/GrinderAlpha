@@ -28,7 +28,10 @@ try:
         logging.getLogger("bottom_accelerator").error("策略参数加载失败，使用硬编码回退值")
 except ImportError:
     _SP = None
-from valuation_engine import evaluate_etf, ValZone, format_valuation_line
+try:
+    from .valuation_engine import evaluate_etf, ValZone, format_valuation_line
+except ImportError:
+    from valuation_engine import evaluate_etf, ValZone, format_valuation_line
 
 # ═══════════════════════════════════════════════════════════════
 # 历史大底定义 — 仅已确认的底部，不含当前数据
