@@ -1,0 +1,9 @@
+# InvestmentOS showcase — 核心引擎零第三方依赖（纯 Python 标准库）
+#
+# 仅 macro_pipeline.py（宏观数据采集）需要以下依赖：
+akshare>=1.14
+pandas>=2.0
+numpy>=1.24
+
+# 可选：回测脚本如需绘图
+# matplotlib>=3.7

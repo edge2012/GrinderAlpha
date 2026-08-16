@@ -1,0 +1,12 @@
+{
+  "symbol": "SPY",
+  "_note": "示例档案：SPY 真实历史回撤（公开市场数据，非私人持仓）。仅用于演示 support_levels.py 的输入格式。ATH 与谷底价格为公开历史数据。",
+  "_source": "公开市场历史行情（Yahoo Finance / 公开数据源），非系统真实底部档案",
+  "drawdown_anchor": {
+    "ath": 479.98,
+    "major_drawdowns": [
+      {"trough_price": 357.36, "dd_pct": 25.5, "peak": "2022-01", "trough": "2022-10"},
+      {"trough_price": 223.03, "dd_pct": 34.0, "peak": "2020-02", "trough": "2020-03"}
+    ]
+  }
+}

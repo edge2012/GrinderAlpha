@@ -1,0 +1,19 @@
+[project]
+name = "investment-os-showcase"
+version = "0.1.0"
+description = "Engineering showcase of InvestmentOS — pure decision engines extracted from a private investment decision system"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "InvestmentOS" }]
+
+[project.optional-dependencies]
+macro = ["akshare>=1.14", "pandas>=2.0", "numpy>=1.24"]
+plot = ["matplotlib>=3.7"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["engine", "engine.methodologies"]
