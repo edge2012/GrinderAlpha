@@ -20,9 +20,10 @@ from __future__ import annotations
 import json
 import os
 import random
+import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from .config import DebateConfig, load_config
@@ -176,7 +177,7 @@ class DebateEngine:
 
         # ── Save full debate if configured ──
         if self.config.save_full_debate:
-            self._save_debate_log(result)
+            self._save_debate_json(result)
 
         return result
 
@@ -927,8 +928,12 @@ Respond in {self.config.output_language}."""
             return "bearish"
         return "neutral"
 
-    def _save_debate_log(self, result: DebateResult) -> None:
-        """Save full debate text to disk AND capture structured prediction to backtest DB."""
+    def _save_debate_json(self, result: DebateResult) -> None:
+        """Save full debate text to disk.
+
+        Pure standard library only — no internal project imports — so the
+        public/sanitized slice can keep this method untouched.
+        """
         log_dir = os.path.expanduser(self.config.log_dir)
         os.makedirs(log_dir, exist_ok=True)
 
@@ -962,58 +967,6 @@ Respond in {self.config.output_language}."""
         with open(filepath, "w", encoding="utf-8") as f:
             json.dump(log_data, f, indent=2, ensure_ascii=False)
 
-        # ── Also capture to backtest DB ──
-        try:
-            from investment.backtest import DecisionLogger
-            logger = DecisionLogger()
-
-            # Build structured debate args from PM decision
-            pm_decision = getattr(result, '_pm_decision', {})
-            debate_args = []
-            for arg in pm_decision.get("adopted_arguments", []):
-                debate_args.append({
-                    "role": arg.get("side", "unknown"),
-                    "argument_text": arg.get("argument", ""),
-                    "argument_type": "",
-                    "evidence_cited": arg.get("evidence", ""),
-                    "pm_adopted": True,
-                })
-            for arg in pm_decision.get("rejected_arguments", []):
-                debate_args.append({
-                    "role": arg.get("side", "unknown"),
-                    "argument_text": arg.get("argument", ""),
-                    "argument_type": "",
-                    "evidence_cited": arg.get("evidence", ""),
-                    "pm_adopted": False,
-                })
-
-            result_data = {
-                "ticker": result.ticker,
-                "ticker_name": result.ticker,
-                "market": self._infer_market_from_ticker(result.ticker),
-                "recorded_at": datetime.now(timezone.utc).isoformat(),
-                "prediction": {
-                    "rating": result.rating.value,
-                    "price_target": pm_decision.get("price_target"),
-                    "time_horizon": pm_decision.get("time_horizon", "3m"),
-                    "confidence": pm_decision.get("confidence", "medium"),
-                    "executive_summary": result.executive_summary,
-                    "investment_thesis": result.investment_thesis,
-                    "key_risks": result.key_risks,
-                },
-                "snapshot_price": 0.0,  # Will be filled by engine if available
-                "snapshot_market_state": "",
-                "debate_args": debate_args,
-                "debate_config": {
-                    "rounds": result.scenario_debate.rounds if hasattr(
-                        result.scenario_debate, 'rounds') else 2,
-                    "quality_report": result.quality_report,
-                },
-            }
-            logger.capture_debate_result(result_data)
-        except Exception as e:
-            print(f"[DebateEngine] Failed to capture to backtest DB: {e}",
-                  file=sys.stderr)
 
     @staticmethod
     def _infer_market_from_ticker(ticker: str) -> str:

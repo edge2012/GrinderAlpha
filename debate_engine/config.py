@@ -57,6 +57,8 @@ class DebateConfig:
     # ── Logging ──
     log_dir: str = "debate_logs"
     save_full_debate: bool = True         # Save full debate text for review
+    capture_backtest: bool = False        # Also capture structured prediction to
+                                          # backtest DB (internal-only, opt-in)
 
 
 def load_config() -> DebateConfig:
