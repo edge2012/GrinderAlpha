@@ -1,0 +1,2 @@
+# 仓库治理：所有文件变更需 owner 审批（配合 branch protection 的 "Require review from Code Owners"）
+* @edge2012
