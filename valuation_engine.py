@@ -10,16 +10,17 @@ Valuation Engine — 分类型估值引擎
 3. 旁路架构 — 不改bottom_accelerator核心逻辑
 4. 数据降级 — 数据不可用时标注而非崩溃
 
-数据源:
-- PE: akshare stock_index_pe_lg (legulegu, 15-20年历史)
-- PB: akshare stock_index_pb_lg (legulegu, 15-20年历史)
-- 股息率: akshare stock_zh_index_value_csindex (中证指数, 1月历史)
+数据源（多源降级，2026-08-31 重构）:
+- PE 主源: 中证指数官网（官方，2011 起 15 年，index-perf 端点 peg 字段）
+- PE/PB 降级: akshare stock_index_pe_lg/pb_lg (legulegu, 15-20年) → 蛋卷快照（10年口径现成百分位）
+- 股息率: akshare stock_zh_index_value_csindex (中证指数, 1月历史) → 蛋卷快照 yeild
 
-ETF→指数映射:
+ETF→指数映射（5 元组）:
   宽基: 510300→沪深300, 510050→上证50, 510500→中证500
-  创业板/科创50: →创业板50(proxy)
-  红利因子: 512890→上证红利(proxy), 510880→上证红利
-  行业/AI链/港股: →中证500(proxy) 或 数据不足
+  科创50/创业板: 588000→科创50(000688), 159915→创业板指(399006)  [已修正原创业板50 proxy]
+  红利因子: 515080→中证红利(000922)
+  行业/AI链: →中证500(proxy)
+  港股: 159920→恒生指数(HKHSI), 513130→恒生科技(HKHSTECH)  [已修正原沪深300 proxy]
 
 估值方法分配:
   宽基: PE分位数(0.6) + PB分位数(0.4)
@@ -35,23 +36,36 @@ import os
 from dataclasses import dataclass, field
 from typing import Optional, Dict, List, Tuple
 from enum import Enum
+
+
 # Cache integration
 VALUATION_CACHE_TTL = 86400  # 24h default for valuation data
 
+_data_access = None
 
-def _get_cache():
-    """Lazy-load DataCache to avoid import-time DB init."""
-    from market_data_layer import DataCache
-    return DataCache()
+
+def get_data_access():
+    """延迟创建数据访问层（工厂自动选实现）。测试可注入 mock 隔离网络。
+
+    委托 investment.data_access.get_data_access() 工厂：market_data_layer 可 import
+    → MarketDataAccess，否则回退 SimpleDataAccess（公开库无私有模块时也能跑）。
+    通过 monkeypatch.setattr(valuation_engine, '_data_access', mock) 注入，
+    monkeypatch 会自动恢复为 None。
+    """
+    global _data_access
+    if _data_access is None:
+        from investment.data_access import get_data_access as _get_da
+        _data_access = _get_da()
+    return _data_access
 
 
 def _valuation_from_cache(etf_code: str):
     """Try to get valuation from cache. Returns ValuationResult or None."""
     try:
-        cache = _get_cache()
-        data, age = cache.get_cached_valuation(etf_code, max_age=VALUATION_CACHE_TTL)
-        if data is None:
+        cached = get_data_access().get_cached_valuation(etf_code, max_age=VALUATION_CACHE_TTL)
+        if cached is None:
             return None
+        data, age = cached
         return ValuationResult(
             etf_code=data.get("etf_code", etf_code),
             etf_name=data.get("etf_name", ""),
@@ -72,7 +86,6 @@ def _valuation_from_cache(etf_code: str):
 def _valuation_to_cache(result) -> None:
     """Store valuation result to cache."""
     try:
-        cache = _get_cache()
         data = {
             "etf_code": result.etf_code,
             "etf_name": result.etf_name,
@@ -86,7 +99,7 @@ def _valuation_to_cache(result) -> None:
             "data_sources": result.data_sources,
             "warnings": result.warnings,
         }
-        cache.cache_valuation(result.etf_code, data, ttl=VALUATION_CACHE_TTL)
+        get_data_access().cache_valuation(result.etf_code, data, ttl=VALUATION_CACHE_TTL)
     except Exception:
         pass  # cache write failure is non-fatal
 
@@ -119,29 +132,34 @@ class ValuationResult:
 
 # ─── Configuration ──────────────────────────────────────────────────
 
-# ETF → (PE源名称, PB源名称, 股息率指数代码) 映射
+# ETF → (PE名, PB名, 中证代码, 类别, 蛋卷代码) 映射
+# 字段说明：
+#   PE名/PB名   — legulegu 指数名（PB 主源 + PE 降级源）
+#   中证代码    — 中证指数代码（PE 官方主源 + 股息率源，如 '000300'；港股/无官方源为 None）
+#   类别        — 估值方法分类
+#   蛋卷代码    — 蛋卷基金指数代码（PE/PB/股息率 的终极降级源，如 'SH000300' / 'HKHSI'）
 ETF_VALUATION_MAP = {
     # 宽基 — 直接映射
-    "510300": ("沪深300", "沪深300", "000300", "宽基"),
-    "510050": ("上证50", "上证50", "000016", "宽基"),
-    "510500": ("中证500", "中证500", "000905", "宽基"),
-    # 创业板/科创50 — 创业板50 proxy
-    "588000": ("创业板50", "创业板50", None, "宽基"),
-    "159915": ("创业板50", "创业板50", None, "宽基"),
-    # 红利因子
-    "512890": ("上证红利", "上证红利", "000922", "因子"),
-    "510880": ("上证红利", "上证红利", "000922", "因子"),
+    "510300": ("沪深300", "沪深300", "000300", "宽基", "SH000300"),
+    "510050": ("上证50", "上证50", "000016", "宽基", "SH000016"),
+    "510500": ("中证500", "中证500", "000905", "宽基", "SH000905"),
+    # 科创50 / 创业板 — 修正为真指数（原"创业板50" proxy 错误）
+    # 588000 跟踪科创50(000688)，159915 跟踪创业板指(399006)
+    "588000": ("科创50", "科创50", "000688", "宽基", "SH000688"),
+    "159915": ("创业板指", "创业板指", "399006", "宽基", "SZ399006"),
+    # 红利因子（515080中证红利唯一红利因子，跟踪000922）
+    "515080": ("中证红利", "中证红利", "000922", "因子", "SH000922"),
     # 行业/AI链 — 中证500 proxy (PB为主)
-    "512480": ("中证500", "中证500", None, "行业"),
-    "516160": ("中证500", "中证500", None, "行业"),
-    "512010": ("中证500", "中证500", None, "行业"),
-    "515880": ("中证500", "中证500", None, "AI链"),
-    "515070": ("中证500", "中证500", None, "AI链"),
-    "562500": ("中证500", "中证500", None, "AI链"),
-    "159928": ("中证500", "中证500", None, "行业"),
-    # 港股宽基 — 沪深300 proxy (跨市场，可信度低)
-    "159920": ("沪深300", "沪深300", None, "宽基-港股"),
-    "513130": ("沪深300", "沪深300", None, "宽基-港股"),
+    # 512010 医药ETF(易方达) 跟踪中证医药卫生(000933)：官方PE源有完整15年数据，PB降级蛋卷全指医药
+    "512480": ("中证500", "中证500", "000905", "行业", "SH000905"),
+    "516160": ("中证500", "中证500", "000905", "行业", "SH000905"),
+    "512010": ("中证医药卫生", "中证医药卫生", "000933", "行业", "SH000991"),
+    "515880": ("中证500", "中证500", "000905", "AI链", "SH000905"),
+    "515070": ("中证500", "中证500", "000905", "AI链", "SH000905"),
+    "159928": ("中证500", "中证500", "000905", "行业", "SH000905"),
+    # 港股宽基 — 修正为恒生真指数（原"沪深300" proxy 跨市场错误）
+    "159920": ("恒生指数", "恒生指数", None, "宽基-港股", "HKHSI"),
+    "513130": ("恒生科技", "恒生科技", None, "宽基-港股", "HKHSTECH"),
 }
 
 # 类别→估值方法权重
@@ -173,53 +191,42 @@ def _pct_to_zone(pct: float) -> Tuple[ValZone, str]:
 
 
 def _fetch_pe_history(pe_name: str):
-    """从legulegu获取PE历史"""
-    try:
-        import akshare as ak
-        df = ak.stock_index_pe_lg(symbol=pe_name)
-        # 滚动市盈率 is the preferred PE metric
-        pe_col = "滚动市盈率" if "滚动市盈率" in df.columns else "静态市盈率"
-        values = df[pe_col].dropna().tolist()
-        return values, df["日期"].iloc[0], df["日期"].iloc[-1]
-    except Exception as e:
-        return None, None, None
+    """从 DataAccess 获取 PE 历史。返回 (values, start, end) 或 (None, None, None)。"""
+    result = get_data_access().get_pe_history(pe_name)
+    return result if result is not None else (None, None, None)
 
 
 def _fetch_pb_history(pb_name: str):
-    """从legulegu获取PB历史"""
-    try:
-        import akshare as ak
-        df = ak.stock_index_pb_lg(symbol=pb_name)
-        # PB列名通常是'市净率'或第二列数值列
-        pb_col = None
-        for col in df.columns:
-            if "市净" in str(col) or "PB" in str(col).upper():
-                pb_col = col
-                break
-        if pb_col is None:
-            # 尝试找数值列
-            num_cols = df.select_dtypes(include=["float64", "int64"]).columns
-            pb_col = num_cols[-1] if len(num_cols) > 1 else num_cols[0]
-        values = df[pb_col].dropna().tolist()
-        return values, df["日期"].iloc[0], df["日期"].iloc[-1]
-    except Exception as e:
-        return None, None, None
+    """从 DataAccess 获取 PB 历史。返回 (values, start, end) 或 (None, None, None)。"""
+    result = get_data_access().get_pb_history(pb_name)
+    return result if result is not None else (None, None, None)
 
 
 def _fetch_dividend_info(csindex_code: str):
-    """从中证指数获取当前股息率"""
-    try:
-        import akshare as ak
-        df = ak.stock_zh_index_value_csindex(symbol=csindex_code)
-        if df is None or len(df) == 0:
-            return None
-        last = df.iloc[-1]
-        div1 = last.get("股息率1")
-        div2 = last.get("股息率2")
-        # 优先用股息率1
-        return float(div1) if div1 else (float(div2) if div2 else None)
-    except Exception:
+    """从 DataAccess 获取当前股息率。"""
+    return get_data_access().get_dividend_yield(csindex_code)
+
+
+def _fetch_pe_history_official(index_code: str):
+    """从 DataAccess 获取中证指数官网官方 PE 历史。返回 (values, start, end) 或 (None, None, None)。"""
+    result = get_data_access().get_pe_history_official(index_code)
+    return result if result is not None else (None, None, None)
+
+
+def _fetch_snapshot(danjuan_code: str):
+    """从 DataAccess 获取蛋卷基金估值快照。返回 dict 或 None。
+
+    蛋卷快照字段：pe/pb（绝对值）、pe_pct/pb_pct（0-1 百分位）、div_yield（小数，0.0106=1.06%）。
+    """
+    return get_data_access().get_index_valuation_snapshot(danjuan_code)
+
+
+def _percentile_from_series(values: List[float]) -> Optional[float]:
+    """从历史序列算当前值百分位（当前值=序列最后一个）。返回 0-100 或 None。"""
+    if not values or len(values) <= 1:
         return None
+    current = values[-1]
+    return round(sum(1 for v in values if v < current) / len(values) * 100, 1)
 
 
 def evaluate_etf(etf_code: str, etf_name: str = "", category: str = "") -> ValuationResult:
@@ -244,7 +251,7 @@ def evaluate_etf(etf_code: str, etf_name: str = "", category: str = "") -> Valua
             confidence=0
         )
 
-    pe_name, pb_name, csindex_code, mapped_cat = map_entry
+    pe_name, pb_name, csindex_code, mapped_cat, danjuan_code = map_entry
     cat = category or mapped_cat
     methods = CATEGORY_VAL_METHODS.get(cat, CATEGORY_VAL_METHODS["宽基"])
 
@@ -267,39 +274,93 @@ def evaluate_etf(etf_code: str, etf_name: str = "", category: str = "") -> Valua
     scores = []  # (score, weight) tuples
     confidence_deductions = 0
 
-    # ── PE Percentile ──
+    # ── PE Percentile（多源降级：中证官网官方 → legulegu → 蛋卷快照）──
     if methods.get("pe", 0) > 0:
-        pe_vals, pe_start, pe_end = _fetch_pe_history(pe_name)
-        if pe_vals and len(pe_vals) > 100:
-            current_pe = pe_vals[-1]
-            pct = sum(1 for v in pe_vals if v < current_pe) / len(pe_vals) * 100
-            result.pe_percentile = round(pct, 1)
-            zone, label = _pct_to_zone(pct)
+        pe_percentile = None
+
+        # 源1: 中证指数官网（官方，2011 起 15 年）
+        if csindex_code:
+            pe_vals, pe_start, pe_end = _fetch_pe_history_official(csindex_code)
+            if pe_vals and len(pe_vals) > 100:
+                pe_percentile = _percentile_from_series(pe_vals)
+                result.data_sources["PE"] = (
+                    f"中证指数官网 {csindex_code} ({pe_start}~{pe_end}, {len(pe_vals)}条)"
+                )
+
+        # 源2: legulegu（第三方，15-20 年）
+        if pe_percentile is None:
+            pe_vals, pe_start, pe_end = _fetch_pe_history(pe_name)
+            if pe_vals and len(pe_vals) > 100:
+                pe_percentile = _percentile_from_series(pe_vals)
+                result.data_sources["PE"] = (
+                    f"legulegu {pe_name} ({pe_start}~{pe_end}, {len(pe_vals)}条)"
+                )
+
+        # 源3: 蛋卷快照（10 年口径现成百分位，终极降级）
+        if pe_percentile is None:
+            snap = _fetch_snapshot(danjuan_code)
+            pe_pct_val = (snap or {}).get("pe_pct")
+            if pe_pct_val is not None:
+                pe_percentile = round(pe_pct_val * 100, 1)
+                result.data_sources["PE"] = f"蛋卷 {danjuan_code} (降级,10年口径)"
+                confidence_deductions += 3
+                result.warnings.append(
+                    "PE官方/legulegu不可用，蛋卷降级(10年口径，百分位可能偏高10-20pp)"
+                )
+
+        if pe_percentile is not None:
+            result.pe_percentile = pe_percentile
             # 低PE=便宜, 所以用(100-pct)映射到0-10分
-            pe_score = round((100 - pct) / 10, 1)
+            pe_score = round((100 - pe_percentile) / 10, 1)
             scores.append((pe_score, methods["pe"]))
-            result.data_sources["PE"] = f"legulegu {pe_name} ({pe_start}~{pe_end}, {len(pe_vals)}条)"
         else:
             result.warnings.append(f"PE数据不可用({pe_name})")
             confidence_deductions += 3
 
-    # ── PB Percentile ──
+    # ── PB Percentile（多源降级：legulegu → 蛋卷快照）──
     if methods.get("pb", 0) > 0:
+        pb_percentile = None
+
+        # 源1: legulegu（第三方，15-20 年）
         pb_vals, pb_start, pb_end = _fetch_pb_history(pb_name)
         if pb_vals and len(pb_vals) > 100:
-            current_pb = pb_vals[-1]
-            pct = sum(1 for v in pb_vals if v < current_pb) / len(pb_vals) * 100
-            result.pb_percentile = round(pct, 1)
-            pb_score = round((100 - pct) / 10, 1)
+            pb_percentile = _percentile_from_series(pb_vals)
+            result.data_sources["PB"] = (
+                f"legulegu {pb_name} ({pb_start}~{pb_end}, {len(pb_vals)}条)"
+            )
+
+        # 源2: 蛋卷快照（10 年口径现成百分位，降级）
+        if pb_percentile is None:
+            snap = _fetch_snapshot(danjuan_code)
+            pb_pct_val = (snap or {}).get("pb_pct")
+            if pb_pct_val is not None:
+                pb_percentile = round(pb_pct_val * 100, 1)
+                result.data_sources["PB"] = f"蛋卷 {danjuan_code} (降级,10年口径)"
+                confidence_deductions += 3
+                result.warnings.append("PB legulegu不可用，蛋卷降级(10年口径)")
+
+        if pb_percentile is not None:
+            result.pb_percentile = pb_percentile
+            pb_score = round((100 - pb_percentile) / 10, 1)
             scores.append((pb_score, methods["pb"]))
-            result.data_sources["PB"] = f"legulegu {pb_name} ({pb_start}~{pb_end}, {len(pb_vals)}条)"
         else:
             result.warnings.append(f"PB数据不可用({pb_name})")
             confidence_deductions += 3
 
-    # ── Dividend Yield ──
+    # ── Dividend Yield（多源降级：csindex → 蛋卷 yeild）──
     if methods.get("dividend", 0) > 0 and csindex_code:
         div = _fetch_dividend_info(csindex_code)
+        div_source_label = f"中证指数 {csindex_code}"
+
+        # 降级: 蛋卷 yeild（小数，需 ×100 转百分比）
+        if div is None:
+            snap = _fetch_snapshot(danjuan_code)
+            div_yield_val = (snap or {}).get("div_yield")
+            if div_yield_val is not None and div_yield_val > 0:
+                div = div_yield_val * 100
+                div_source_label = f"蛋卷 {danjuan_code} (降级)"
+                confidence_deductions += 2
+
         if div is not None:
             result.dividend_yield = round(div, 2)
             # 股息率越高越便宜，但需要历史区间来判断
@@ -319,7 +380,7 @@ def evaluate_etf(etf_code: str, etf_name: str = "", category: str = "") -> Valua
                 # 非红利类，股息率权重低
                 div_score = min(div / 0.5, 10)  # 2% = 4分
             scores.append((div_score, methods["dividend"]))
-            result.data_sources["股息率"] = f"中证指数 {csindex_code}"
+            result.data_sources["股息率"] = div_source_label
             result.dividend_percentile = round(div_score * 10, 1)
         else:
             result.warnings.append(f"股息率数据不可用({csindex_code})")
@@ -421,7 +482,7 @@ if __name__ == "__main__":
         codes = sys.argv[1:]
     else:
         # 默认输出核心ETF
-        codes = ["510300", "510050", "512890", "510880"]
+        codes = ["510300", "510050", "515080"]
 
     for code in codes:
         entry = ETF_VALUATION_MAP.get(code)

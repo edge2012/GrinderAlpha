@@ -1,0 +1,50 @@
+{
+  "_meta": {
+    "description": "EXAMPLE ONLY — 真实参数在 ~/.hermes/config/strategy_params.json（不入 Git）",
+    "version": "0.0",
+    "warning": "所有值均为占位符，运行时从真实配置文件加载"
+  },
+  "account_b_builder": {
+    "gate_trend_min_klines": 0,
+    "score_threshold": 0,
+    "category_thresholds": {},
+    "fallback_thresholds": [0.0, 0.0],
+    "cond4_categories": [],
+    "cond4_ma20_ma60_max": 0.0
+  },
+  "bottom_accelerator": {
+    "zones": []
+  },
+  "macro_pipeline": {
+    "ppi_bottom": 0.0,
+    "ppi_top": 0.0,
+    "m2_bottom": 0.0,
+    "m2_top": 0.0,
+    "dca_multipliers": {}
+  },
+  "portfolio_builder": {
+    "max_holdings": 0,
+    "core_target_divisor": 0.0,
+    "core_target_max": 0.0,
+    "satellite_target_divisor": 0.0,
+    "satellite_target_max": 0.0,
+    "allocation_targets": {
+      "offense": {"min": 0, "max": 0},
+      "core":    {"min": 0, "max": 0},
+      "defense": {"min": 0, "max": 0}
+    }
+  },
+  "market_data_layer": {
+    "max_daily_change": 0.0,
+    "short_put": {
+      "base_limit_pct": 0.0,
+      "vol_threshold_low": 0.0,
+      "vol_threshold_mid": 0.0,
+      "vol_threshold_high": 0.0,
+      "vol_multiplier_low": 0.0,
+      "vol_multiplier_mid_start": 0.0,
+      "vol_multiplier_mid_end": 0.0,
+      "vol_multiplier_high": 0.0
+    }
+  }
+}

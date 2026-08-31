@@ -12,7 +12,7 @@ BuyPointEngine — 方法论工厂
 新增方法论: 继承 BaseMethodology，实现 analyze()，注册到 REGISTRY。
 """
 
-from .base import (
+from investment.methodologies.base import (
     BaseMethodology,
     BuyPointResult,
     Market,

@@ -20,18 +20,10 @@ import os
 import logging
 from datetime import datetime
 
-# 策略参数外部化（不入 Git）
-try:
-    from strategy_param_loader import get_params as _get_strategy_params
-    _SP = _get_strategy_params()
-    if _SP is None:
-        logging.getLogger("bottom_accelerator").error("策略参数加载失败，使用硬编码回退值")
-except ImportError:
-    _SP = None
-try:
-    from .valuation_engine import evaluate_etf, ValZone, format_valuation_line
-except ImportError:
-    from valuation_engine import evaluate_etf, ValZone, format_valuation_line
+from valuation_engine import evaluate_etf, ValZone, format_valuation_line
+from investment.param_provider import get_param_provider
+
+logger = logging.getLogger("bottom_accelerator")
 
 # ═══════════════════════════════════════════════════════════════
 # 历史大底定义 — 仅已确认的底部，不含当前数据
@@ -69,9 +61,11 @@ BOTTOM_DEFINITIONS = {
 # ═══════════════════════════════════════════════════════════════
 # ETF → 底层指数映射 + 价格换算系数
 # ETF价格(元) × 系数 ≈ 指数点位
+# ⚠️ 勿与 account_b_builder.ETF_INDEX_MAP 混淆——那个是 etf_code→腾讯tcode
+#    （拉指数行情用）；本表是 etf_code→(指数名, 换算系数)，底部趋势线校准用。
 # ═══════════════════════════════════════════════════════════════
 
-ETF_INDEX_MAP = {
+ETF_INDEX_CALIBRATION_MAP = {
     "510300": ("沪深300", 992),     # index ~4942 / ETF ~4.984
     "510050": ("上证指数", 1356),    # index ~4090 / ETF ~3.017
     "510500": ("上证指数", 810),     # 中证500 ~8828 / ETF ~10.9? 实际需校准
@@ -85,9 +79,7 @@ ETF_INDEX_MAP = {
     "159928": (None, None),
     "515880": (None, None),
     "515070": (None, None),
-    "562500": (None, None),
-    "512890": (None, None),
-    "510880": (None, None),
+    "515080": (None, None),
 }
 
 # ═══════════════════════════════════════════════════════════════
@@ -96,12 +88,25 @@ ETF_INDEX_MAP = {
 # 上证历史：底部平均偏离+1%，恐慌底不深
 # ═══════════════════════════════════════════════════════════════
 
-def _load_zones():
-    """从策略配置加载底部加速区域，失败时用硬编码回退"""
-    if _SP:
-        raw = _SP["bottom_accelerator"]["zones"]
-        return [(z["name"], z["min_pct"], z["max_pct"], z["dca_multiplier"], z["short_label"]) for z in raw]
-    return []  # NO FALLBACK
+def _load_zones(provider=None):
+    """从策略参数提供者加载底部加速区域。
+
+    provider: 测试可注入；默认走 get_param_provider()。
+    示例参数（is_example）且 zones 为空时显式告警，不再静默空壳。
+    """
+    provider = provider or get_param_provider()
+    raw = provider.get("bottom_accelerator", "zones", [])
+    if not raw:
+        if provider.is_example:
+            logger.warning(
+                "底部加速参数未配置（运行在示例参数），zones 为空 → 恒 1x，底部加速功能停用"
+            )
+        return []
+    return [
+        (z["name"], z["min_pct"], z["max_pct"], z["dca_multiplier"], z["short_label"])
+        for z in raw
+    ]
+
 ZONES = _load_zones()
 
 
@@ -194,7 +199,10 @@ def classify_zone(deviation_pct):
     根据偏离趋势线的绝对百分比判定当前区域。
 
     Returns:
-        dict with: zone_name, label, dca_multiplier
+        dict with: zone_name, label, dca_multiplier, min_pct, max_pct
+        min_pct/max_pct 为命中区间的边界，左闭右开 [min_pct, max_pct)：
+          - min_pct 闭区间（deviation >= min_pct）；None = -∞
+          - max_pct 开区间（deviation < max_pct）；None = +∞
     """
     for name, lo, hi, mult, label in ZONES:
         lo_ok = lo is None or deviation_pct >= lo
@@ -204,12 +212,16 @@ def classify_zone(deviation_pct):
                 "zone_name": name,
                 "label": label,
                 "dca_multiplier": mult,
+                "min_pct": lo,
+                "max_pct": hi,
             }
 
     return {
         "zone_name": "正常区",
         "label": "1x",
         "dca_multiplier": 1.0,
+        "min_pct": None,
+        "max_pct": None,
     }
 
 
@@ -225,7 +237,7 @@ def analyze_etf_bottom(etf_code, current_price, index_level=None):
     Returns:
         dict 或 None（如果该ETF无底部趋势线数据）
     """
-    index_name = ETF_INDEX_MAP.get(etf_code)
+    index_name = ETF_INDEX_CALIBRATION_MAP.get(etf_code)
     if index_name is None:
         return None
     index_name, scale_factor = index_name if isinstance(index_name, tuple) else (index_name, 1000)
@@ -267,6 +279,12 @@ def analyze_etf_bottom(etf_code, current_price, index_level=None):
         "r_squared": trendline["r_squared"],
         "zone": zone,
         "dca_multiplier": zone["dca_multiplier"],
+        # 完整推导链快照：输入(历史大底) + 拟合结果(slope/intercept/σ/R²/投影)。
+        # 供宣传公开库/复盘/调试独立理解推导过程，不依赖顶层字段拼凑。
+        "trace": {
+            "bottoms": definition["bottoms"],
+            "fit": trendline,
+        },
     }
 
 

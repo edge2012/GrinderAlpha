@@ -16,10 +16,11 @@ Schema兼容: 同时支持新版档案（pe_trailing/current_dd_pct/pe_max/dd_mi
 import os
 import re
 import sys
-import urllib.request
 import json
 from typing import Optional
-from .base import (
+
+
+from investment.methodologies.base import (
     BaseMethodology,
     BuyPointResult,
     Market,
@@ -33,7 +34,19 @@ class SniperAHMethodology(BaseMethodology):
     TYPE = MethodologyType.SNIPER_AH
     LABEL = "A/H 狙击"
     
-    MARKET_PREFIX = {"A": "sh", "HK": "hk"}
+    def __init__(self, data_dir: Optional[str] = None, data_access=None,
+                 profile_provider=None):
+        """注入数据访问层 + 底部档案层。默认延迟创建私有实现。
+
+        data_access 需实现 investment.data_access.DataAccess 接口；
+        profile_provider 需实现 investment.profile_provider.ProfileProvider 接口。
+        测试可注入 mock 以隔离网络/文件系统。
+        """
+        super().__init__(data_dir, profile_provider=profile_provider)
+        if data_access is None:
+            from investment.data_access import get_data_access
+            data_access = get_data_access()
+        self._data_access = data_access
     
     def analyze(self, symbol: str) -> BuyPointResult:
         market = self._detect_market(symbol)
@@ -41,9 +54,13 @@ class SniperAHMethodology(BaseMethodology):
         
         profile = self._load_profile(symbol)
         if not profile:
+            guidance = self._profile_provider.get_guidance(symbol)
             result.recommendation = "无底部档案，需先建立。"
             result.rationale = f"{symbol} 尚未建立底部档案，无法进行狙击分析。"
             result.warnings.append("缺少底部档案")
+            for step in guidance.get("steps", []):
+                result.warnings.append(f"[建档] {step}")
+            result.debug["profile_guidance"] = guidance
             return result
         
         price = self._get_price(symbol, market)
@@ -231,17 +248,4 @@ class SniperAHMethodology(BaseMethodology):
         return Market.HK
     
     def _get_price(self, symbol: str, market: Market) -> Optional[float]:
-        try:
-            prefix = self.MARKET_PREFIX.get(market.value, "hk")
-            url = f"http://qt.gtimg.cn/q={prefix}{symbol}"
-            raw = urllib.request.urlopen(url, timeout=10).read().decode("gbk")
-            for line in raw.strip().split("\n"):
-                if '="' not in line:
-                    continue
-                data = line[line.index('="') + 2:].rstrip('";\n\r')
-                parts = data.split("~")
-                if len(parts) > 3 and parts[3]:
-                    return float(parts[3])
-        except Exception:
-            pass
-        return None
+        return self._data_access.get_quote(symbol, market.value)

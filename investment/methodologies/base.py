@@ -10,8 +10,6 @@ BuyPointEngine — 抽象基类 + 输出 Schema
 3. 新增市场只需实现新 Methodology 子类，顶层不变
 """
 
-import os
-import json
 from dataclasses import dataclass, field
 from typing import Optional, List, Dict
 from enum import Enum
@@ -84,8 +82,12 @@ class BaseMethodology(ABC):
     TYPE: MethodologyType
     LABEL: str = ""
     
-    def __init__(self, data_dir: Optional[str] = None):
-        self.data_dir = data_dir or os.path.expanduser("~/.hermes/state/bottom_profiles")
+    def __init__(self, data_dir: Optional[str] = None, profile_provider=None):
+        from investment.profile_provider import DEFAULT_PROFILE_DIR, FileProfileProvider
+        self.data_dir = data_dir or DEFAULT_PROFILE_DIR
+        if profile_provider is None:
+            profile_provider = FileProfileProvider(self.data_dir)
+        self._profile_provider = profile_provider
     
     @abstractmethod
     def analyze(self, symbol: str) -> BuyPointResult:
@@ -93,12 +95,8 @@ class BaseMethodology(ABC):
         ...
     
     def _load_profile(self, symbol: str) -> Optional[dict]:
-        """加载底部档案（A/H + US 通用）。"""
-        path = os.path.join(self.data_dir, f"{symbol}.json")
-        if not os.path.exists(path):
-            return None
-        with open(path) as f:
-            return json.load(f)
+        """加载底部档案（A/H + US 通用）。走 ProfileProvider，无档案返回 None。"""
+        return self._profile_provider.get_profile(symbol)
 
     def _calc_current_drawdown(self, drawdown_anchor: dict,
                                current_price: Optional[float]) -> Optional[float]:

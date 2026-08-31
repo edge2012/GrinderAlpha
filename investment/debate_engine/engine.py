@@ -63,10 +63,11 @@ class DebateEngine:
         self._init_llms()
 
     def _init_llms(self):
-        """Initialize LLM clients from the existing infrastructure.
+        """Initialize LLM clients (OpenAI-compatible, provider-agnostic).
 
-        Uses the same LLM setup as the rest of the Hermes system.
-        Falls back gracefully if LLM infrastructure is not available.
+        LLM 后端通过环境变量 / config.llm_base_url 配置，可替换为任意
+        OpenAI 兼容端点（DeepSeek / OpenAI / 本地 vLLM 等）。不依赖任何
+        ~/.hermes 私有路径或内部基础设施。
         """
         try:
             self.deep_llm = self._create_llm_client(self.config.deep_model)
@@ -75,23 +76,36 @@ class DebateEngine:
         except Exception as e:
             raise RuntimeError(
                 f"Failed to initialize LLM clients for debate engine: {e}\n"
-                "Ensure the LLM infrastructure is accessible."
+                "Ensure langchain_openai is installed and an LLM API key "
+                "is set (LLM_API_KEY / DEEPSEEK_API_KEY / OPENAI_API_KEY)."
             )
 
     def _create_llm_client(self, model: str):
-        """Create a LangChain-compatible LLM client.
+        """Create an OpenAI-compatible LLM client (provider-agnostic).
 
-        Uses environment variables for API configuration.
+        api_key 优先级: LLM_API_KEY > DEEPSEEK_API_KEY > OPENAI_API_KEY
+        base_url 优先级: config.llm_base_url > LLM_BASE_URL > DEEPSEEK_BASE_URL
+                         > OPENAI_BASE_URL > 默认 DeepSeek
+
+        公开库用户设 OPENAI_API_KEY + OPENAI_BASE_URL（或 config.llm_base_url）
+        即可指向自己的端点；私有侧默认行为（DeepSeek）零变化。
         """
         from langchain_openai import ChatOpenAI
-        
-        # Use DeepSeek-compatible OpenAI API
-        api_key = os.environ.get("DEEPSEEK_API_KEY", os.environ.get("OPENAI_API_KEY", ""))
-        base_url = os.environ.get(
-            "DEEPSEEK_BASE_URL",
-            "https://api.deepseek.com/v1"
+
+        api_key = (
+            os.environ.get("LLM_API_KEY")
+            or os.environ.get("DEEPSEEK_API_KEY")
+            or os.environ.get("OPENAI_API_KEY")
+            or ""
         )
-        
+        base_url = (
+            self.config.llm_base_url
+            or os.environ.get("LLM_BASE_URL")
+            or os.environ.get("DEEPSEEK_BASE_URL")
+            or os.environ.get("OPENAI_BASE_URL")
+            or "https://api.deepseek.com/v1"
+        )
+
         return ChatOpenAI(
             model=model,
             api_key=api_key,
@@ -178,6 +192,10 @@ class DebateEngine:
         # ── Save full debate if configured ──
         if self.config.save_full_debate:
             self._save_debate_json(result)
+            # Backtest DB capture is internal-only & opt-in (default off) so the
+            # public/sanitized slice can drop it without touching the JSON path.
+            if self.config.capture_backtest:
+                self._capture_backtest_db(result)
 
         return result
 
@@ -967,6 +985,63 @@ Respond in {self.config.output_language}."""
         with open(filepath, "w", encoding="utf-8") as f:
             json.dump(log_data, f, indent=2, ensure_ascii=False)
 
+    def _capture_backtest_db(self, result: DebateResult) -> None:
+        """Capture structured prediction to backtest DB (internal-only, opt-in).
+
+        Isolated from _save_debate_json so the public/sanitized slice can drop
+        this method cleanly, leaving no internal-module import in the JSON path.
+        """
+        try:
+            from investment.backtest import DecisionLogger
+            logger = DecisionLogger()
+
+            # Build structured debate args from PM decision
+            pm_decision = getattr(result, '_pm_decision', {})
+            debate_args = []
+            for arg in pm_decision.get("adopted_arguments", []):
+                debate_args.append({
+                    "role": arg.get("side", "unknown"),
+                    "argument_text": arg.get("argument", ""),
+                    "argument_type": "",
+                    "evidence_cited": arg.get("evidence", ""),
+                    "pm_adopted": True,
+                })
+            for arg in pm_decision.get("rejected_arguments", []):
+                debate_args.append({
+                    "role": arg.get("side", "unknown"),
+                    "argument_text": arg.get("argument", ""),
+                    "argument_type": "",
+                    "evidence_cited": arg.get("evidence", ""),
+                    "pm_adopted": False,
+                })
+
+            result_data = {
+                "ticker": result.ticker,
+                "ticker_name": result.ticker,
+                "market": self._infer_market_from_ticker(result.ticker),
+                "recorded_at": datetime.now(timezone.utc).isoformat(),
+                "prediction": {
+                    "rating": result.rating.value,
+                    "price_target": pm_decision.get("price_target"),
+                    "time_horizon": pm_decision.get("time_horizon", "3m"),
+                    "confidence": pm_decision.get("confidence", "medium"),
+                    "executive_summary": result.executive_summary,
+                    "investment_thesis": result.investment_thesis,
+                    "key_risks": result.key_risks,
+                },
+                "snapshot_price": 0.0,  # Will be filled by engine if available
+                "snapshot_market_state": "",
+                "debate_args": debate_args,
+                "debate_config": {
+                    "rounds": result.scenario_debate.rounds if hasattr(
+                        result.scenario_debate, 'rounds') else 2,
+                    "quality_report": result.quality_report,
+                },
+            }
+            logger.capture_debate_result(result_data)
+        except Exception as e:
+            print(f"[DebateEngine] Failed to capture to backtest DB: {e}",
+                  file=sys.stderr)
 
     @staticmethod
     def _infer_market_from_ticker(ticker: str) -> str:

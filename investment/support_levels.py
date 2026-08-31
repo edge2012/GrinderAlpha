@@ -14,7 +14,7 @@
   价格支撑 = 市场历史上实际触及并反弹的价格水平。
 
 用法:
-    from support_levels import get_support_levels
+    from investment.support_levels import get_support_levels
     support = get_support_levels('HOOD', current_price=94)
 """
 
@@ -24,8 +24,8 @@ from dataclasses import dataclass, field
 from typing import Optional, Dict, List
 
 
-BOTTOM_PROFILES_DIR = os.environ.get(
-    "BOTTOM_PROFILES_DIR",
+PROFILE_DIR = os.environ.get(
+    "BOTTOM_PROFILE_DIR",
     os.path.join(os.path.dirname(__file__), "..", "data", "bottom_profiles"),
 )
 
@@ -57,7 +57,7 @@ class SupportResult:
 
 
 def _load_profile(symbol: str) -> Optional[dict]:
-    path = os.path.join(BOTTOM_PROFILES_DIR, f"{symbol}.json")
+    path = os.path.join(PROFILE_DIR, f"{symbol}.json")
     if not os.path.exists(path):
         return None
     try:
@@ -122,6 +122,22 @@ def get_support_levels(symbol: str, current_price: float = None) -> SupportResul
             'peak': dd.get('peak') or dd.get('peak_date') or '?',
             'trough': dd.get('trough') or dd.get('trough_date') or '?',
         })
+
+    # ─── 时代差异过滤（2026-08-19 修复）───
+    # 长期成长股股价翻数倍后，历史回撤底部价（如 META 2018 $130）远低于现价，
+    # 已不构成"离现价最近的硬支撑"。硬套会得到荒谬行权价（META Spread 卖腿算成
+    # $130，正确 15%OTM≈$470），进而 CBOE 查到深度虚值合约 → IV 虚高 212% → 误判
+    # "流动性不足"。
+    #
+    # 过滤原则（非拍脑袋）：支撑位必须比安全垫更浅才有约束力。SP 安全垫 20%、
+    # Spread 15%，若历史底部价 < 现价 50%（比最深安全垫还深 2.5 倍），说明是
+    # "时代差异"陈年底部，退回纯安全垫。数据验证：2022 及更早陈年底部全部 <50%，
+    # 2025-2026 近期底部全部 >50%，阈值干净分离两类。
+    if current_price:
+        bottoms = [b for b in bottoms if b['price'] >= current_price * 0.5]
+        if not bottoms and drawdowns:
+            result.note = "历史底部均为时代差异（<现价50%），退回纯安全垫"
+            return result
 
     # 按价格从高到低排序（最高的底 = 离现价最近的支撑）
     bottoms.sort(key=lambda b: b['price'], reverse=True)

@@ -30,6 +30,10 @@ Modes:
 """
 
 from .config import DebateConfig, load_config, update_portfolio_config
+from .config_provider import (
+    DebateConfigProvider, PortfolioConfigProvider, EnvConfigProvider,
+    get_config_provider,
+)
 from .state import (
     AnalysisInput, DebateResult, ScenarioDebateState, RiskDebateState,
     Rating, Confidence,
@@ -42,6 +46,10 @@ __all__ = [
     "DebateConfig",
     "load_config",
     "update_portfolio_config",
+    "DebateConfigProvider",
+    "PortfolioConfigProvider",
+    "EnvConfigProvider",
+    "get_config_provider",
     "AnalysisInput",
     "DebateResult",
     "ScenarioDebateState",
