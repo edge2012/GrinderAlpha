@@ -25,6 +25,6 @@
 2. 用腾讯月K + 年报 EPS 填 `pe_anchor.bottoms`
 3. 用腾讯月K 后复权填 `drawdown_anchor.bottoms`
 4. 定义 `sniper_range.condition_pe` / `condition_dd`
-5. 审校后写入 `~/.hermes/state/bottom_profiles/{symbol}.json`
+5. 审校后写入档案目录（默认 `data/bottom_profiles/{symbol}.json`，可用 `BOTTOM_PROFILE_DIR` 环境变量覆盖）
 
 > 港股示例只需把 `symbol` 换成 5 位代码（如 `00700`）、`market` 设为 `HK`，其余 schema 完全一致。

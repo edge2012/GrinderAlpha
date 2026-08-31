@@ -1,27 +1,27 @@
-# InvestmentOS
+# GrinderAlpha
 
 English | [中文](README.zh.md)
 
-An engineering-grade investment decision system — from macro positioning to trade review, a complete closed loop.
+An engineering-grade investment decision system — deterministic engines for discipline, a multi-agent debate layer for judgment.
 
 ## Overview
 
-InvestmentOS turns the investment decision process into an engineered system. From macro regime analysis, valuation, and buy-point identification to stop-loss and retrospective review, each step is codified into repeatable, backtestable rules. On top of the deterministic layer sits a multi-agent LLM debate engine that synthesizes conflicting views into a structured decision. The goal is to let discipline be executed by the system, reducing the influence of human emotion — chasing rallies, hesitating to cut losses.
+GrinderAlpha turns the investment decision process into an engineered system. From bottom identification, valuation, and buy-point selection to stop-loss monitoring and retrospective review, each step is codified into repeatable, backtestable rules. On top of the deterministic layer sits a multi-agent LLM debate engine that synthesizes conflicting views into a structured decision. The goal is to let discipline be executed by the system, reducing the influence of human emotion — chasing rallies, hesitating to cut losses.
 
 This is **not** high-frequency trading. The cadence is daily, weekly, monthly — low frequency, but strict. The aim is the certainty of discipline, not speed.
 
 ## Design Principles
 
-- **Methodology as code** — each decision type (buy point, valuation, stop-loss, support level) is distilled into rules that can be stated, repeated, and backtested.
-- **Signal systematization** — a dozen scattered indicators (macro, valuation, trend, sentiment) converge into one signal language, so the right action is obvious at a glance.
+- **Methodology as code** — each decision type (buy point, valuation, support level, stop-loss) is distilled into rules that can be stated, repeated, and backtested.
+- **Providers, not hard dependencies** — data access, strategy params, bottom profiles, and positions are each abstracted behind a Provider interface, with a public (self-contained) and a private (production) implementation.
 - **Discipline by machine** — discipline is counter to human nature, so it is handed to code.
 
-## How AI Is Used
+## Architecture
 
-InvestmentOS has two layers with a clear division of labor:
+Two layers, a clear division of labor:
 
-- **Deterministic engines** (`engine/`) — rules and backtests. Market posture, valuation, support levels, Black-Scholes. Pure math, zero third-party dependencies.
-- **LLM debate engine** (`debate_engine/`) — a multi-agent debate that turns raw data into a structured decision.
+- **Deterministic engines** (`investment/` + top-level engines) — rules and backtests. Bottom acceleration, valuation, support levels, Black-Scholes. Pure math, zero third-party dependencies.
+- **LLM debate engine** (`investment/debate_engine/`) — a multi-agent debate that turns raw data into a structured decision.
 
 The debate engine orchestrates several LLM agents in a pipeline:
 
@@ -34,8 +34,8 @@ AnalysisInput → Scenario Debate (Bull vs Bear) → Scenario Judge
 Design highlights:
 
 - **Adversarial debate** — bull and bear agents argue against each other, rather than a single LLM producing one opinion.
-- **Tiered models** — judge/PM nodes use a stronger model (`deepseek-v4-pro`); debaters use a faster one (`deepseek-v4-flash`).
-- **Context compression** — a compressor caps context at 16K tokens across debate rounds.
+- **Tiered models** — judge/PM nodes use a stronger model; debaters use a faster one.
+- **Context compression** — a compressor caps context across debate rounds.
 - **Shadow mode** — the debate runs alongside the baseline first; it only replaces the baseline after proving itself.
 
 The LLM produces a *recommendation*, not an order. Nothing here places trades automatically.
@@ -52,20 +52,19 @@ This project is for **educational and research purposes only**.
 ## Quick Start
 
 ```bash
-git clone https://github.com/edge2012/investment-os.git
-cd investment-os
+git clone https://github.com/edge2012/GrinderAlpha.git
+cd GrinderAlpha
 
-# 1. Black-Scholes option pricing (pure math, no data needed)
-python3 -c "from engine.options_estimator import bs_put_price; print(bs_put_price(94, 82, 30/365, 0.04, 0.60))"
+# 1. Black-Scholes option pricing (pure Python, zero dependencies)
+python3 -c "from investment.options_estimator import bs_put_price; print(bs_put_price(94, 82, 30/365, 0.04, 0.60))"
 
-# 2. Support-level extraction (with a sample SPY bottom profile)
-python3 engine/examples/demo_options.py
-
-# 3. Buy-point routing (full output needs live market data + API keys)
-python3 -m engine.buy_point_engine SPY
+# 2. Backtests (install dependencies first)
+pip install -r requirements.txt
+python -m backtest.run --list                          # list all backtests
+python -m backtest.run entry_signal --symbol sh000300  # run one on CSI 300
 ```
 
-The deterministic engines depend only on the Python standard library. `macro_pipeline.py` needs `akshare`, `pandas`, and `numpy`. See `requirements.txt`.
+The deterministic engines depend only on the Python standard library. Backtests need `numpy`/`pandas`/`scipy`; valuation data fallback needs `akshare`. See `requirements.txt`.
 
 ## Configuration
 
@@ -73,10 +72,9 @@ Most features need no API key — only the LLM debate engine requires one.
 
 | Feature | Key required | Notes |
 |---------|-------------|-------|
-| Deterministic engines (posture, valuation, options, support) | None | Free public data (Tencent quotes, CBOE) |
-| BuyPointEngine methodologies (A/H, value, growth, turnaround) | None | Tencent quotes, no key |
-| `trend_etf.py` (US ETF monthly bars) | `ALPHA_VANTAGE_API_KEY` | Free key; degrades gracefully if missing |
-| `debate_engine/` (LLM debate) | `DEEPSEEK_API_KEY` | From the DeepSeek platform |
+| Deterministic engines (bottom, valuation, support, options) | None | Free public data (Tencent quotes, CBOE) |
+| Valuation data fallback | None | `akshare` (legulegu / Danjuan), free |
+| `investment/debate_engine/` (LLM debate) | `DEEPSEEK_API_KEY` | From the DeepSeek platform |
 
 ### Setting keys
 
@@ -86,7 +84,6 @@ Either approach works:
 
 ```bash
 export DEEPSEEK_API_KEY=sk-...
-export ALPHA_VANTAGE_API_KEY=...
 ```
 
 **Option 2 — a `.env` file** (auto-loaded by the debate engine):
@@ -95,7 +92,6 @@ export ALPHA_VANTAGE_API_KEY=...
 # .env in the project root
 DEEPSEEK_API_KEY=sk-...
 DEEPSEEK_BASE_URL=https://api.deepseek.com/v1
-ALPHA_VANTAGE_API_KEY=...
 ```
 
 The debate engine's config loader reads `.env` automatically (path via `DOTENV_PATH`, default `.env`) and only sets variables not already in the environment — so env vars always win. The `.env` file is gitignored, so your keys stay out of version control.
@@ -103,65 +99,64 @@ The debate engine's config loader reads `.env` automatically (path via `DOTENV_P
 ## Repository Structure
 
 ```
-investment-os/
-├── engine/                          # Deterministic decision engines (zero third-party deps)
-│   ├── market_state_engine.py       # Market state: 5-posture aggregation
-│   ├── bottom_accelerator.py        # Bottom acceleration: log-linear trendline + DCA multiplier
-│   ├── valuation_engine.py          # Valuation: per-category PE/PB percentile
-│   ├── macro_pipeline.py            # Macro regime: 7-indicator classification
-│   ├── strategy_param_loader.py     # "Params never enter git" security pattern
-│   ├── buy_point_engine.py          # Buy-point router (plugin architecture)
-│   ├── cboe_options.py              # CBOE options chain + liquidity gate
-│   ├── options_estimator.py         # Pure-Python Black-Scholes (no scipy)
-│   ├── support_levels.py            # Support-level extraction
-│   ├── methodologies/               # 5 market methodologies (the plugin layer)
-│   └── examples/                    # Runnable demos
-├── debate_engine/                   # LLM multi-agent debate engine
-│   ├── engine.py                    # Orchestration (Bull/Bear → Judge → Trader → Risk → PM)
-│   ├── prompts.py / zh_prompts.py   # Prompts (English / Chinese)
-│   ├── compressor.py                # Context compression across debate rounds
-│   ├── quality.py                   # Argument quality evaluation
-│   └── state.py / config.py         # Data models / configuration
-├── backtest/                        # Backtest scripts (in progress)
-├── data/                            # Sample data (bottom profiles)
-└── docs/                            # Methodologies & limitations (in progress)
+grinderalpha/
+├── backtest/                       # Backtest runner (core / data / run)
+├── bottom_accelerator.py           # Bottom acceleration: trendline + DCA multiplier
+├── valuation_engine.py             # Valuation: per-category PE/PB percentile
+├── investment/                     # Core package (name intentionally kept "investment")
+│   ├── data_access.py              # DataAccess provider (quotes + valuation)
+│   ├── param_provider.py           # ParamProvider (strategy params)
+│   ├── profile_provider.py         # ProfileProvider (bottom profiles)
+│   ├── support_levels.py           # Support-level extraction
+│   ├── options_estimator.py        # Pure-Python Black-Scholes (fallback)
+│   ├── cboe_options.py             # CBOE options chain client
+│   ├── methodologies/              # Buy-point methodologies (base + sniper_ah)
+│   ├── sell_monitors/              # Sell monitors (PositionProvider + 3 strategies)
+│   └── debate_engine/              # LLM multi-agent debate
+├── data/bottom_profiles/           # Sample bottom profiles
+├── examples/                       # Teaching examples
+└── strategy_params.example.json    # Placeholder params (zero-filled)
 ```
 
 ## Core Modules
 
-### BuyPointEngine — plugin architecture
+### Bottom acceleration (`bottom_accelerator.py`)
 
-`buy_point_engine.py` defines only routing and the output schema (`BuyPointResult`). `methodologies/` holds five independent implementations, one per market × asset type:
+Fits a log-linear trendline through confirmed historical bottoms, projects it to today, and classifies how far the current price sits below the trendline. The "hitting zone" is when price touches or breaks below the projected bottom — the deeper the discount, the larger the DCA (dollar-cost-averaging) multiplier. Each index is calibrated independently.
 
-- `trend_etf.py` — US index ETFs (trend + valuation)
-- `value_us.py` — US value stocks (PE percentile + drawdown depth)
-- `growth_us.py` — US growth stocks (PEG + revenue growth)
-- `sniper_ah.py` — A/H stocks (PE anchor + drawdown anchor)
-- `turnaround_us.py` — US turnaround plays (bet on fundamental inflection)
+### Valuation (`valuation_engine.py`)
 
-Adding a new market means implementing a new subclass — the top layer never changes.
+Per-category valuation — broad index, dividend, sector, AI-chain, and HK shares each use a different method. Multi-source with graceful degradation: the official China Securities Index site is the primary PE source, falling back to `akshare` (legulegu) and Danjuan snapshots when unavailable.
 
-### Options chain — data over estimation
+### A/H sniper methodology (`investment/methodologies/sniper_ah.py`)
 
-`cboe_options.py` fetches real CBOE bid/ask mid-prices and enforces a liquidity gate (`bid=0` blocks). The original approach estimated implied volatility with a heuristic; a live test proved it wrong by 55 percentage points, so estimation was demoted to a documented fallback (`options_estimator.py`).
+"Good company + extreme cheapness → fire." Two independent anchors — PE returns to its historical bottom range, and drawdown touches historical extremes. Both satisfied means in range. Reads bottom profiles and Tencent real-time quotes.
 
-### Black-Scholes — pure Python
+### Support levels (`investment/support_levels.py`)
 
-`options_estimator.py` implements Black-Scholes in pure Python, deliberately avoiding scipy for deployment simplicity.
+Extracts support from real historical drawdown bottoms rather than arbitrary multipliers. Support is protection, not a strike-price anchor: S1 is the highest bottom below current price, S2 the next-deeper one.
 
-### Support levels — data-driven
+### Options (`investment/cboe_options.py` + `options_estimator.py`)
 
-`support_levels.py` extracts support from real historical drawdown bottoms rather than arbitrary multipliers.
+`cboe_options.py` fetches real CBOE delayed bid/ask mid-prices and enforces a liquidity gate (`bid=0` blocks). `options_estimator.py` is a pure-Python Black-Scholes fallback (no scipy), used only when the live chain is unavailable — estimation was demoted to a documented fallback after a live test proved it wrong by 55 percentage points.
+
+### Sell monitors (`investment/sell_monitors/`)
+
+Three strategies — mean reversion, trend following, and index DCA — each reading positions through the `PositionProvider` interface. The public implementation (`DictPositionProvider`) accepts a plain dict; the production one (`DBPositionProvider`) is a lazy import and never triggers in the public repo.
+
+### Backtest (`backtest/`)
+
+A unified entry point — `python -m backtest.run <name>`. Each backtest is registered under a name and routed to pure-computation cores, outputting long-term return / win rate / max drawdown plus a data-source declaration.
 
 ## Known Limitations
 
 | Limitation | Status |
 |-----------|--------|
+| Only A/H methodology shipped; US methodologies (trend/value/growth/turnaround) are Phase 2 | Enum placeholders present, implementations deferred |
+| Macro regime layer (multi-indicator posture classification) is Phase 2 | Not shipped in this snapshot |
 | Debate engine output quality depends on the underlying LLM | Shadow mode validates before promotion |
-| Macro DCA multiplier not yet wired into position builder | Signal produced, display-only |
-| A-share lacks cycle-manager coverage | US has a 3-signal state machine, A-share does not |
-| Temperature weights are experience-set | Back-infer from 2+ years of posture data (planned) |
 | Options backtests are recent | CBOE path added 2026-08 |
+| Temperature weights are experience-set | Back-infer from posture data (planned) |
 
 ## License
 
