@@ -34,8 +34,7 @@ python -m backtest.run <name> --symbol X   # 只跑指定标的
 backtest/
 ├── data.py      # 统一历史K线数据层（路由 + 重试 + 缓存降级）
 ├── core.py      # 纯计算核心（无 I/O，可单测）
-├── run.py       # 注册表 + CLI 入口
-└── *.py         # 原始研究脚本（含 yfinance 私有依赖，仅供研究复现）
+└── run.py       # 注册表 + CLI 入口
 ```
 
-核心函数与数据获取完全分离，`core.py` 全部为「输入数据 → 输出结果」的纯函数，由 `tests/test_backtest_core.py` 单测覆盖。
+核心函数与数据获取完全分离，`core.py` 全部为「输入数据 → 输出结果」的纯函数，与数据源解耦、可独立单测。

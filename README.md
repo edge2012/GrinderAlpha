@@ -23,12 +23,48 @@ Two layers, a clear division of labor:
 - **Deterministic engines** (`investment/` + top-level engines) — rules and backtests. Bottom acceleration, valuation, support levels, Black-Scholes. Pure math, zero third-party dependencies.
 - **LLM debate engine** (`investment/debate_engine/`) — a multi-agent debate that turns raw data into a structured decision.
 
+```mermaid
+flowchart TB
+    subgraph P["Provider Layer"]
+        direction LR
+        DA[DataAccess<br/>quotes / valuation]
+        PP[ParamProvider<br/>strategy params]
+        PR[ProfileProvider<br/>bottom profiles]
+        PO[PositionProvider<br/>positions]
+    end
+
+    subgraph E["Deterministic Engines · pure Python · zero deps"]
+        direction LR
+        BA[Bottom<br/>Acceleration]
+        VE[Valuation]
+        SN[Sniper<br/>A/H]
+        SL[Support<br/>Levels]
+        OP[Options]
+        SM[Sell<br/>Monitors]
+        BT[Backtest]
+    end
+
+    DR[DecisionReport<br/>unified schema]
+
+    subgraph D["LLM Debate Engine · OpenAI-compatible"]
+        DE[Multi-agent<br/>Debate]
+    end
+
+    P --> E --> DR
+    E --> D
+    DR --> D
+```
+
 The debate engine orchestrates several LLM agents in a pipeline:
 
-```
-AnalysisInput → Scenario Debate (Bull vs Bear) → Scenario Judge
-              → Trader (simulated) → Risk Debate (Aggressive / Conservative / Neutral)
-              → Portfolio Manager → DebateResult
+```mermaid
+flowchart LR
+    A[AnalysisInput] --> B{Scenario Debate<br/>Bull vs Bear}
+    B --> C[Scenario Judge]
+    C --> D[Trader<br/>simulated]
+    D --> E{Risk Debate<br/>Aggressive / Conservative / Neutral}
+    E --> F[Portfolio Manager]
+    F --> G[DebateResult]
 ```
 
 Design highlights:
@@ -74,27 +110,35 @@ Most features need no API key — only the LLM debate engine requires one.
 |---------|-------------|-------|
 | Deterministic engines (bottom, valuation, support, options) | None | Free public data (Tencent quotes, CBOE) |
 | Valuation data fallback | None | `akshare` (legulegu / Danjuan), free |
-| `investment/debate_engine/` (LLM debate) | `DEEPSEEK_API_KEY` | From the DeepSeek platform |
+| `investment/debate_engine/` (LLM debate) | `OPENAI_API_KEY` (or any OpenAI-compatible key) | Provider-agnostic; DeepSeek is the default fallback |
 
 ### Setting keys
+
+The debate engine uses an OpenAI-compatible client (`langchain_openai.ChatOpenAI`), so **any OpenAI-compatible endpoint** works — OpenAI, DeepSeek, or a self-hosted vLLM.
 
 Either approach works:
 
 **Option 1 — environment variables:**
 
 ```bash
-export DEEPSEEK_API_KEY=sk-...
+export OPENAI_API_KEY=sk-...
+export OPENAI_BASE_URL=https://api.openai.com/v1   # or your own endpoint
 ```
 
 **Option 2 — a `.env` file** (auto-loaded by the debate engine):
 
 ```bash
 # .env in the project root
-DEEPSEEK_API_KEY=sk-...
-DEEPSEEK_BASE_URL=https://api.deepseek.com/v1
+OPENAI_API_KEY=sk-...
+OPENAI_BASE_URL=https://api.openai.com/v1
 ```
 
-The debate engine's config loader reads `.env` automatically (path via `DOTENV_PATH`, default `.env`) and only sets variables not already in the environment — so env vars always win. The `.env` file is gitignored, so your keys stay out of version control.
+Resolution order (first hit wins):
+
+- **api key**: `LLM_API_KEY` > `DEEPSEEK_API_KEY` > `OPENAI_API_KEY`
+- **base URL**: `config.llm_base_url` > `LLM_BASE_URL` > `DEEPSEEK_BASE_URL` > `OPENAI_BASE_URL` > `https://api.deepseek.com/v1` (default)
+
+The `DEEPSEEK_*` keys are kept only for backward compatibility with the private system's default provider. The debate engine's config loader reads `.env` automatically (path via `DOTENV_PATH`, default `.env`) and only sets variables not already in the environment — so env vars always win. The `.env` file is gitignored, so your keys stay out of version control.
 
 ## Repository Structure
 

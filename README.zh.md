@@ -23,12 +23,48 @@ GrinderAlpha 把投资决策过程工程化为一个系统。从底部识别、�
 - **确定性引擎**（`investment/` + 顶层引擎）—— 规则与回测。底部加速、估值、支撑位、Black-Scholes。纯数学，零第三方依赖。
 - **LLM 辩论引擎**（`investment/debate_engine/`）—— 多智能体辩论，把原始数据转化为结构化决策。
 
+```mermaid
+flowchart TB
+    subgraph P["Provider 抽象层"]
+        direction LR
+        DA[DataAccess<br/>行情 / 估值]
+        PP[ParamProvider<br/>策略参数]
+        PR[ProfileProvider<br/>底部档案]
+        PO[PositionProvider<br/>持仓]
+    end
+
+    subgraph E["确定性引擎 · 纯 Python · 零依赖"]
+        direction LR
+        BA[底部加速]
+        VE[估值引擎]
+        SN[狙击方法论]
+        SL[支撑位]
+        OP[期权]
+        SM[卖出监控]
+        BT[回测]
+    end
+
+    DR[DecisionReport<br/>统一决策报告]
+
+    subgraph D["LLM 辩论引擎 · OpenAI 兼容"]
+        DE[多智能体辩论]
+    end
+
+    P --> E --> DR
+    E --> D
+    DR --> D
+```
+
 辩论引擎按流水线编排多个 LLM 智能体：
 
-```
-AnalysisInput → 情景辩论（多方 vs 空方）→ 情景裁判
-              → 交易员（模拟）→ 风险辩论（激进 / 保守 / 中性）
-              → 组合经理 → DebateResult
+```mermaid
+flowchart LR
+    A[AnalysisInput] --> B{情景辩论<br/>多方 vs 空方}
+    B --> C[情景裁判]
+    C --> D[交易员<br/>模拟]
+    D --> E{风险辩论<br/>激进 / 保守 / 中性}
+    E --> F[组合经理]
+    F --> G[DebateResult]
 ```
 
 设计亮点：
@@ -74,27 +110,35 @@ python -m backtest.run entry_signal --symbol sh000300  # 对沪深300跑一个
 |------|-----------|------|
 | 确定性引擎（底部、估值、支撑、期权） | 无 | 免费公开数据（腾讯行情、CBOE） |
 | 估值数据兜底 | 无 | `akshare`（legulegu / 蛋卷），免费 |
-| `investment/debate_engine/`（LLM 辩论） | `DEEPSEEK_API_KEY` | 来自 DeepSeek 平台 |
+| `investment/debate_engine/`（LLM 辩论） | `OPENAI_API_KEY`（或任意 OpenAI 兼容 key） | Provider 无关；DeepSeek 为默认回退 |
 
 ### 设置 Key
+
+辩论引擎使用 OpenAI 兼容客户端（`langchain_openai.ChatOpenAI`），因此**任意 OpenAI 兼容端点**均可 —— OpenAI、DeepSeek、或自托管 vLLM。
 
 两种方式任选其一：
 
 **方式一 —— 环境变量：**
 
 ```bash
-export DEEPSEEK_API_KEY=sk-...
+export OPENAI_API_KEY=sk-...
+export OPENAI_BASE_URL=https://api.openai.com/v1   # 或你自己的端点
 ```
 
 **方式二 —— `.env` 文件**（辩论引擎自动加载）：
 
 ```bash
 # 项目根目录的 .env
-DEEPSEEK_API_KEY=sk-...
-DEEPSEEK_BASE_URL=https://api.deepseek.com/v1
+OPENAI_API_KEY=sk-...
+OPENAI_BASE_URL=https://api.openai.com/v1
 ```
 
-辩论引擎的配置加载器会自动读取 `.env`（路径经 `DOTENV_PATH`，默认 `.env`），且只设置环境里没有的变量 —— 所以环境变量始终优先。`.env` 文件已 gitignore，密钥不会进入版本控制。
+解析优先级（先命中者胜）：
+
+- **api key**：`LLM_API_KEY` > `DEEPSEEK_API_KEY` > `OPENAI_API_KEY`
+- **base URL**：`config.llm_base_url` > `LLM_BASE_URL` > `DEEPSEEK_BASE_URL` > `OPENAI_BASE_URL` > `https://api.deepseek.com/v1`（默认）
+
+`DEEPSEEK_*` 仅用于与私有系统默认 provider 的向后兼容。辩论引擎的配置加载器会自动读取 `.env`（路径经 `DOTENV_PATH`，默认 `.env`），且只设置环境里没有的变量 —— 所以环境变量始终优先。`.env` 文件已 gitignore，密钥不会进入版本控制。
 
 ## 仓库结构
 
