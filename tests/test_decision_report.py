@@ -5,7 +5,7 @@
     pytest tests/test_decision_report.py         # 装了 pytest 也能跑
 """
 
-from engine.decision_report import (
+from investment.decision_report import (
     Action,
     DataSourceInfo,
     DecisionReport,
