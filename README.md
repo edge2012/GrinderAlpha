@@ -110,6 +110,7 @@ grinderalpha/
 │   ├── support_levels.py           # Support-level extraction
 │   ├── options_estimator.py        # Pure-Python Black-Scholes (fallback)
 │   ├── cboe_options.py             # CBOE options chain client
+│   ├── decision_report.py          # Unified decision report schema (Action + resolve_action)
 │   ├── methodologies/              # Buy-point methodologies (base + sniper_ah)
 │   ├── sell_monitors/              # Sell monitors (PositionProvider + 3 strategies)
 │   └── debate_engine/              # LLM multi-agent debate
@@ -139,6 +140,10 @@ Extracts support from real historical drawdown bottoms rather than arbitrary mul
 ### Options (`investment/cboe_options.py` + `options_estimator.py`)
 
 `cboe_options.py` fetches real CBOE delayed bid/ask mid-prices and enforces a liquidity gate (`bid=0` blocks). `options_estimator.py` is a pure-Python Black-Scholes fallback (no scipy), used only when the live chain is unavailable — estimation was demoted to a documented fallback after a live test proved it wrong by 55 percentage points.
+
+### Decision report (`investment/decision_report.py`)
+
+A zero-dependency schema that unifies every engine's output into one structured report: `DecisionReport` carries the recommended `Action` (BUY / ADD / HOLD / TRIM / EXIT / WAIT / REBUY), per-dimension checks, a derivation `trace`, and data-source info. `resolve_action` enforces a priority ladder — stop-loss beats everything, take-profit beats adding, adding beats new positions.
 
 ### Sell monitors (`investment/sell_monitors/`)
 

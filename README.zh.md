@@ -110,6 +110,7 @@ grinderalpha/
 │   ├── support_levels.py           # 支撑位提取
 │   ├── options_estimator.py        # 纯 Python Black-Scholes（兜底）
 │   ├── cboe_options.py             # CBOE 期权链客户端
+│   ├── decision_report.py          # 统一决策报告 schema（Action + resolve_action）
 │   ├── methodologies/              # 买点方法论（base + sniper_ah）
 │   ├── sell_monitors/              # 卖出监控（PositionProvider + 3 策略）
 │   └── debate_engine/              # LLM 多智能体辩论
@@ -139,6 +140,10 @@ grinderalpha/
 ### 期权（`investment/cboe_options.py` + `options_estimator.py`）
 
 `cboe_options.py` 拉取 CBOE 延迟 bid/ask 中间价，并强制流动性门槛（`bid=0` 阻断）。`options_estimator.py` 是纯 Python Black-Scholes 兜底（无 scipy），仅在实时链不可用时启用 —— 一次实盘测试证明估算偏差高达 55 个百分点后，估算被降级为文档化的兜底路径。
+
+### 决策报告（`investment/decision_report.py`）
+
+零依赖 schema，把每个引擎的输出统一为一份结构化报告：`DecisionReport` 携带推荐的 `Action`（BUY / ADD / HOLD / TRIM / EXIT / WAIT / REBUY）、逐维度检查、推导链 `trace` 与数据源信息。`resolve_action` 执行优先级阶梯 —— 止损压一切、止盈压加仓、加仓压建仓。
 
 ### 卖出监控（`investment/sell_monitors/`）
 
