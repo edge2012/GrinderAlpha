@@ -2,19 +2,71 @@
 
 English | [中文](README.zh.md)
 
-An engineering-grade investment decision system — deterministic engines for discipline, a multi-agent debate layer for judgment.
+An engineering-grade investment decision system — deterministic engines for discipline, a multi-agent debate layer for judgment. Every decision shows its work, so it can be read and backtested instead of trusted on faith.
 
-## Overview
+## Why GrinderAlpha
 
-GrinderAlpha turns the investment decision process into an engineered system. From bottom identification, valuation, and buy-point selection to stop-loss monitoring and retrospective review, each step is codified into repeatable, backtestable rules. On top of the deterministic layer sits a multi-agent LLM debate engine that synthesizes conflicting views into a structured decision. The goal is to let discipline be executed by the system, reducing the influence of human emotion — chasing rallies, hesitating to cut losses.
+Chasing rallies and hesitating to cut losses are human nature — discipline is the part humans are worst at. Most "AI trading" tools answer with a black-box signal. GrinderAlpha answers differently: it turns discipline into deterministic rules (when to buy, add, trim, exit, rebuy), and every decision it emits carries a derivation trace — which data went in, which rule fired, what came out.
 
-This is **not** high-frequency trading. The cadence is daily, weekly, monthly — low frequency, but strict. The aim is the certainty of discipline, not speed.
+This is **not** high-frequency trading. The cadence is daily, weekly, monthly — low frequency, but strict. The goal is the certainty of discipline, not speed.
+
+## What a decision looks like
+
+One command, no key, no dependencies — a complete, human-readable decision report:
+
+```bash
+python3 examples/demo_decision_report.py
+```
+
+```text
+📋 决策报告 | 510300 ETF定投
+════════════════════════════════════════════════════════
+
+结论  沪深300 距历史底部趋势线 -18% → 落入「恐慌区」，DCA 倍率 3x，估值确认 upgraded
+      动作 ADD · 信心 8/10 · 区间 ¥4.0-4.3（恐慌区）
+
+证据
+  ✓ 大底趋势     现价折算指数 4166，趋势线投影 5080，偏离 -18%  [腾讯行情(实时)]
+  ✓ 估值       指数 PE 分位 28% → 不贵  [akshare]
+  ✓ 仓位纪律     单标的占比 12% < 15% 纪律线  [用户持仓]
+  ✓ 止损       距 50MA -3% → 建仓期仅展示不拦截  [腾讯日K]
+
+推导
+  ① 拉取历史大底
+    输入 BOTTOM_DEFINITIONS["沪深300"]
+    规则 读历史大底常量
+    结果 [807(2005-06), 2836(2014-06)...]
+  ② 拟合趋势线
+    输入 上一步的底点
+    规则 对数线性拟合
+    结果 年化 +8.1%, r²=0.98
+  ③ 投影当前
+    输入 slope + intercept
+    规则 趋势线外推
+    结果 投影 5080 点
+  ④ 拉取实时价
+    输入 腾讯 qt.gtimg.cn
+    规则 实时行情
+    结果 ¥4.20（折算指数 4166）
+  ⑤ 判定区域
+    输入 4166 vs 5080
+    规则 (4166-5080)/5080 = -18%
+    结果 落入恐慌区 → DCA 3x
+
+数据  历史大底常量(static,2005-06 起) · 腾讯行情(realtime,now) · akshare 估值(realtime,now)
+
+回测  python -m backtest.run entry_signal --symbol sh000300
+数据截至 2026-08-31 · schema v1.0
+```
+
+Three layers in one report: a **conclusion** (what to do now), **evidence** (each dimension with its rule and data source), and a **derivation trace** (every step: input → rule → output). The trace is the whole point — it turns a recommendation into something you can audit. *(The demo prints in Chinese; run the command to reproduce this exact output.)*
 
 ## Design Principles
 
-- **Methodology as code** — each decision type (buy point, valuation, support level, stop-loss) is distilled into rules that can be stated, repeated, and backtested.
-- **Providers, not hard dependencies** — data access, strategy params, bottom profiles, and positions are each abstracted behind a Provider interface, so the engines stay decoupled from where that data comes from.
+- **Methodology as code** — every decision type (buy point, valuation, support, stop-loss) is distilled into rules that can be stated, repeated, and backtested.
+- **Providers, not hard dependencies** — data access, strategy params, bottom profiles, and positions are abstracted behind interfaces, so the engines stay decoupled from where that data comes from.
 - **Discipline by machine** — discipline is counter to human nature, so it is handed to code.
+- **Long-term, not prediction** — the system sells discipline and data, not "will it go up tomorrow". Good asset + good price + long holding.
 
 ## Architecture
 
@@ -54,6 +106,26 @@ Design highlights:
 
 The LLM produces a *recommendation*, not an order. Nothing here places trades automatically.
 
+## Lifecycle
+
+A position flows through a full life cycle, expressed with one action vocabulary:
+
+| Action | Meaning | Engine |
+|--------|---------|--------|
+| `BUY` | open a position | `bottom_accelerator` / `sniper_ah` |
+| `ADD` | DCA add (buy more as it drops) | `bottom_accelerator` |
+| `HOLD` | hold | — |
+| `TRIM` | take profit / reduce | `sell_monitors` |
+| `EXIT` | stop-loss / close | `sell_monitors` |
+| `REBUY` | rebuy after trim | `sell_monitors` |
+| `WAIT` | no position, conditions unmet | — |
+
+When multiple signals conflict, one priority ladder resolves them — stop-loss beats everything, take-profit beats adding, adding beats new positions:
+
+```
+EXIT > TRIM > ADD > BUY > REBUY > HOLD / WAIT
+```
+
 ## Disclaimer
 
 This project is for **educational and research purposes only**.
@@ -69,10 +141,13 @@ This project is for **educational and research purposes only**.
 git clone https://github.com/edge2012/GrinderAlpha.git
 cd GrinderAlpha
 
-# 1. Black-Scholes option pricing (pure Python, zero dependencies)
+# 1. See a full decision report (zero deps, no key)
+python3 examples/demo_decision_report.py
+
+# 2. Black-Scholes option pricing (pure Python, zero dependencies)
 python3 -c "from investment.options_estimator import bs_put_price; print(bs_put_price(94, 82, 30/365, 0.04, 0.60))"
 
-# 2. Backtests (install dependencies first)
+# 3. Backtests (install dependencies first)
 pip install -r requirements.txt
 python -m backtest.run --list                          # list all backtests
 python -m backtest.run entry_signal --symbol sh000300  # run one on CSI 300
@@ -130,7 +205,7 @@ grinderalpha/
 │   ├── sell_monitors/              # Sell monitors (PositionProvider + 3 strategies)
 │   └── debate_engine/              # LLM multi-agent debate
 ├── data/bottom_profiles/           # Sample bottom profiles
-├── examples/                       # Teaching examples
+├── examples/                       # Runnable demos (decision report, …)
 └── strategy_params.example.json    # Example strategy params (copy and tune)
 ```
 
