@@ -64,6 +64,25 @@ python3 examples/demo_decision_report.py
 
 > **ETF 与指数的关系** —— `510300` 是跟踪沪深300 指数（`sh000300`）的可交易 ETF。底部趋势线按**指数**（点位）判断，买卖执行按**ETF**（元）进行，靠每只 ETF 的换算系数（`510300 → ×992`）在两者间换算——所以报告里同时出现「¥4.20」和「折算指数 4166」。上面那条回测命令跑的是 `sh000300`（指数），因为历史 K 线数据在指数级别。
 
+## 快速开始
+
+主线 —— 一份决策报告 + 一次回测 —— 无需 API key：
+
+```bash
+git clone https://github.com/edge2012/GrinderAlpha.git
+cd GrinderAlpha
+
+# 1. 看一份完整决策报告（零依赖、无需 key）
+python3 examples/demo_decision_report.py
+
+# 2. 回测（先装依赖）
+pip install -r requirements.txt
+python -m backtest.run --list                          # 列出所有回测
+python -m backtest.run entry_signal --symbol sh000300  # 对沪深300跑一个
+```
+
+确定性引擎只依赖 Python 标准库。回测需要 `numpy`/`pandas`/`scipy`；估值数据兜底需要 `akshare`。见 `requirements.txt`。
+
 ## 设计原则
 
 - **方法论即代码** —— 每一种决策类型（买点、估值、支撑、止损）都被提炼为可陈述、可重复、可回测的规则。
@@ -130,47 +149,27 @@ LLM 产出的是*建议*，不是订单。这里没有任何东西会自动下�
 EXIT > TRIM > ADD > BUY > REBUY > HOLD / WAIT
 ```
 
-## 免责声明
+## 核心模块
 
-本项目仅用于**教育与研究目的**。
+确定性层围绕决策生命周期组织。每个模块都是纯 Python、跑在免费公开数据上（除非特别标注）；只有辩论引擎需要 key。
 
-- 不构成真实交易或投资建议
-- 不作任何形式的保证
-- 作者不对财务损失承担任何责任
-- 过往表现不代表未来结果
+| 阶段 | 模块 | 作用 |
+|------|------|------|
+| **Buy** | `bottom_accelerator.py` | 对历史大底拟合对数线性趋势线，按价格低于趋势线的深度确定 DCA 倍率（各指数独立校准） |
+| **Buy** | `investment/methodologies/sniper_ah.py` | 「好公司 + 极端便宜」：PE 回到历史底部区间，且回撤触及极值 |
+| **Value** | `valuation_engine.py` | 分类型 PE/PB 百分位（宽基 / 红利 / 行业 / AI 链 / 港股），多源优雅降级 |
+| **Protect** | `investment/support_levels.py` | 从真实历史回撤底部提取 S1/S2 —— 支撑是保护，不是行权价的锚 |
+| **Protect** | `investment/sell_monitors/` | 通过 `PositionProvider` 接口执行卖出 / 止损 / 回补（3 个策略） |
+| **Decide** | `investment/decision_report.py` | 统一 `DecisionReport` schema：动作 + 逐维度检查 + 推导链 `trace` |
+| **Enhance** | `investment/cboe_options.py` + `options_estimator.py` | 真实 CBOE 期权链（流动性门槛）+ 纯 Python Black-Scholes 兜底 |
+| **Verify** | `backtest/` | 统一入口 → 长期收益 / 胜率 / 最大回撤，附带数据来源声明 |
+| **Debate** | `investment/debate_engine/` | 多智能体 LLM 辩论 —— 可选旁路工具（唯一需要 key 的模块） |
 
-## 快速开始
+三点值得单独说明，因为这是「工程」而非「AI」真正起作用的地方：
 
-主线 —— 一份决策报告 + 一次回测 —— 无需 API key：
-
-```bash
-git clone https://github.com/edge2012/GrinderAlpha.git
-cd GrinderAlpha
-
-# 1. 看一份完整决策报告（零依赖、无需 key）
-python3 examples/demo_decision_report.py
-
-# 2. 回测（先装依赖）
-pip install -r requirements.txt
-python -m backtest.run --list                          # 列出所有回测
-python -m backtest.run entry_signal --symbol sh000300  # 对沪深300跑一个
-```
-
-确定性引擎只依赖 Python 标准库。回测需要 `numpy`/`pandas`/`scipy`；估值数据兜底需要 `akshare`。见 `requirements.txt`。
-
-## 额外工具
-
-两个 demo 脚本，各一条命令：
-
-```bash
-python3 examples/demo_options.py    # 期权定价 —— 零依赖、无需 key
-python3 examples/demo_debate.py     # LLM 辩论 —— 需要 API key（见「配置」）
-```
-
-- `demo_options.py` 打印 Black-Scholes 看跌期权价格与 Delta，并标注输入参数（S、K、T、r、sigma）。
-- `demo_debate.py` 对一个示例 A 股标的跑多智能体辩论；没配 key 时会打印配置步骤。
-
-> Black-Scholes 计算器是独立的定价公式，与 Phase-2 路线图上的美股期权增强策略无关。
+- **支撑是保护。** `support_levels.py` 从真实历史回撤底部提取 S1/S2，而非任意乘数。
+- **估算是兜底，不是承诺。** `options_estimator.py`（纯 Python Black-Scholes）在一次实盘测试证明比真实 CBOE 链偏差 55 个百分点后，被降级为文档化的兜底路径。
+- **止损压一切。** `decision_report.resolve_action` 执行优先级阶梯 —— 止损 > 止盈 > 加仓 > 建仓。
 
 ## 配置
 
@@ -203,6 +202,20 @@ export OPENAI_BASE_URL=https://api.openai.com/v1
 
 > **向后兼容。** `DEEPSEEK_API_KEY` / `DEEPSEEK_BASE_URL`（以及 `LLM_API_KEY` / `LLM_BASE_URL`）仍会被识别，保留只是为了兼容 `OPENAI_*` 约定之前的旧配置。新用户忽略它们，设置 `OPENAI_API_KEY` + `OPENAI_BASE_URL` 即可。
 
+## 额外工具
+
+两个 demo 脚本，各一条命令：
+
+```bash
+python3 examples/demo_options.py    # 期权定价 —— 零依赖、无需 key
+python3 examples/demo_debate.py     # LLM 辩论 —— 需要 API key（见「配置」）
+```
+
+- `demo_options.py` 打印 Black-Scholes 看跌期权价格与 Delta，并标注输入参数（S、K、T、r、sigma）。
+- `demo_debate.py` 对一个示例 A 股标的跑多智能体辩论；没配 key 时会打印配置步骤。
+
+> Black-Scholes 计算器是独立的定价公式，与 Phase-2 路线图上的美股期权增强策略无关。
+
 ## 仓库结构
 
 ```
@@ -226,28 +239,6 @@ grinderalpha/
 └── strategy_params.example.json    # 策略参数示例（复制后按需调整）
 ```
 
-## 核心模块
-
-确定性层围绕决策生命周期组织。每个模块都是纯 Python、跑在免费公开数据上（除非特别标注）；只有辩论引擎需要 key。
-
-| 阶段 | 模块 | 作用 |
-|------|------|------|
-| **Buy** | `bottom_accelerator.py` | 对历史大底拟合对数线性趋势线，按价格低于趋势线的深度确定 DCA 倍率（各指数独立校准） |
-| **Buy** | `investment/methodologies/sniper_ah.py` | 「好公司 + 极端便宜」：PE 回到历史底部区间，且回撤触及极值 |
-| **Value** | `valuation_engine.py` | 分类型 PE/PB 百分位（宽基 / 红利 / 行业 / AI 链 / 港股），多源优雅降级 |
-| **Protect** | `investment/support_levels.py` | 从真实历史回撤底部提取 S1/S2 —— 支撑是保护，不是行权价的锚 |
-| **Protect** | `investment/sell_monitors/` | 通过 `PositionProvider` 接口执行卖出 / 止损 / 回补（3 个策略） |
-| **Decide** | `investment/decision_report.py` | 统一 `DecisionReport` schema：动作 + 逐维度检查 + 推导链 `trace` |
-| **Enhance** | `investment/cboe_options.py` + `options_estimator.py` | 真实 CBOE 期权链（流动性门槛）+ 纯 Python Black-Scholes 兜底 |
-| **Verify** | `backtest/` | 统一入口 → 长期收益 / 胜率 / 最大回撤，附带数据来源声明 |
-| **Debate** | `investment/debate_engine/` | 多智能体 LLM 辩论 —— 可选旁路工具（唯一需要 key 的模块） |
-
-三点值得单独说明，因为这是「工程」而非「AI」真正起作用的地方：
-
-- **支撑是保护。** `support_levels.py` 从真实历史回撤底部提取 S1/S2，而非任意乘数。
-- **估算是兜底，不是承诺。** `options_estimator.py`（纯 Python Black-Scholes）在一次实盘测试证明比真实 CBOE 链偏差 55 个百分点后，被降级为文档化的兜底路径。
-- **止损压一切。** `decision_report.resolve_action` 执行优先级阶梯 —— 止损 > 止盈 > 加仓 > 建仓。
-
 ## 已知限制
 
 | 领域 | 状态 |
@@ -257,6 +248,15 @@ grinderalpha/
 | 温度权重 | 经验设定；计划从姿态数据反推 |
 | 辩论引擎输出质量 | 取决于底层 LLM；影子模式验证后才启用 |
 | 期权回测 | 较新 —— CBOE 路径 2026-08 加入 |
+
+## 免责声明
+
+本项目仅用于**教育与研究目的**。
+
+- 不构成真实交易或投资建议
+- 不作任何形式的保证
+- 作者不对财务损失承担任何责任
+- 过往表现不代表未来结果
 
 ## License
 

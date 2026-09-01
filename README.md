@@ -64,6 +64,25 @@ Three layers in one report: a **conclusion** (what to do now), **evidence** (eac
 
 > **ETF vs index** — `510300` is the tradable ETF tracking the CSI 300 index (`sh000300`). The bottom trendline is judged on the *index* (in points), while buying and selling execute on the *ETF* (in yuan). A per-ETF calibration factor (`510300 → ×992`) converts between the two, which is why the report shows both "¥4.20" and "折算指数 4166". The backtest command above runs on `sh000300` (the index) because historical K-line data lives at index level.
 
+## Quick Start
+
+The main line — a decision report and a backtest — needs no API key:
+
+```bash
+git clone https://github.com/edge2012/GrinderAlpha.git
+cd GrinderAlpha
+
+# 1. See a full decision report (zero deps, no key)
+python3 examples/demo_decision_report.py
+
+# 2. Backtests (install dependencies first)
+pip install -r requirements.txt
+python -m backtest.run --list                          # list all backtests
+python -m backtest.run entry_signal --symbol sh000300  # run one on CSI 300
+```
+
+The deterministic engines depend only on the Python standard library. Backtests need `numpy`/`pandas`/`scipy`; valuation data fallback needs `akshare`. See `requirements.txt`.
+
 ## Design Principles
 
 - **Methodology as code** — every decision type (buy point, valuation, support, stop-loss) is distilled into rules that can be stated, repeated, and backtested.
@@ -130,47 +149,27 @@ When multiple signals conflict, one priority ladder resolves them — stop-loss 
 EXIT > TRIM > ADD > BUY > REBUY > HOLD / WAIT
 ```
 
-## Disclaimer
+## Core Modules
 
-This project is for **educational and research purposes only**.
+The deterministic layer is organized around the decision lifecycle. Every module is pure Python and runs on free public data unless noted; only the debate engine needs a key.
 
-- Not intended as real trading or investment advice
-- No guarantees of any kind
-- The author assumes no liability for financial losses
-- Past performance does not indicate future results
+| Stage | Module | What it does |
+|-------|--------|--------------|
+| **Buy** | `bottom_accelerator.py` | Fits a log-linear trendline through historical bottoms and sizes the DCA multiplier by how far below it the price sits (per-index calibration) |
+| **Buy** | `investment/methodologies/sniper_ah.py` | "Good company + extreme cheapness": PE back to its historical bottom **and** drawdown at extremes |
+| **Value** | `valuation_engine.py` | Per-category PE/PB percentile (broad / dividend / sector / AI-chain / HK), multi-source with graceful degradation |
+| **Protect** | `investment/support_levels.py` | S1/S2 support derived from real drawdown bottoms — protection, not a strike anchor |
+| **Protect** | `investment/sell_monitors/` | Sell / stop / rebuy through the `PositionProvider` interface (3 strategies) |
+| **Decide** | `investment/decision_report.py` | Unified `DecisionReport` schema: action + per-dimension checks + derivation `trace` |
+| **Enhance** | `investment/cboe_options.py` + `options_estimator.py` | Real CBOE chain (liquidity-gated) with a pure-Python Black-Scholes fallback |
+| **Verify** | `backtest/` | Unified runner → long-term return / win-rate / max drawdown, with a data-source declaration |
+| **Debate** | `investment/debate_engine/` | Multi-agent LLM debate — an optional side tool (the only key-requiring module) |
 
-## Quick Start
+Three details worth calling out, because this is where the engineering — not the "AI" — does the work:
 
-The main line — a decision report and a backtest — needs no API key:
-
-```bash
-git clone https://github.com/edge2012/GrinderAlpha.git
-cd GrinderAlpha
-
-# 1. See a full decision report (zero deps, no key)
-python3 examples/demo_decision_report.py
-
-# 2. Backtests (install dependencies first)
-pip install -r requirements.txt
-python -m backtest.run --list                          # list all backtests
-python -m backtest.run entry_signal --symbol sh000300  # run one on CSI 300
-```
-
-The deterministic engines depend only on the Python standard library. Backtests need `numpy`/`pandas`/`scipy`; valuation data fallback needs `akshare`. See `requirements.txt`.
-
-## Additional tools
-
-Two demo scripts, each one command:
-
-```bash
-python3 examples/demo_options.py    # option pricing — zero deps, no key
-python3 examples/demo_debate.py     # LLM debate — needs an API key (see Configuration)
-```
-
-- `demo_options.py` prints the Black-Scholes put price and delta with labelled inputs (S, K, T, r, sigma).
-- `demo_debate.py` runs a multi-agent debate on a sample A-share ticker; without a key it prints the setup steps.
-
-> The Black-Scholes calculator is a standalone pricing formula, independent of the US options-enhancement strategies on the Phase-2 roadmap.
+- **Support is protection.** `support_levels.py` derives S1/S2 from real historical drawdown bottoms, not arbitrary multipliers.
+- **Estimation is a fallback, not a promise.** `options_estimator.py` (pure-Python Black-Scholes) was demoted to a documented fallback after a live test showed it off by 55 percentage points against the real CBOE chain.
+- **Stop-loss beats everything.** `decision_report.resolve_action` enforces a priority ladder — stop-loss > take-profit > adding > new positions.
 
 ## Configuration
 
@@ -203,6 +202,20 @@ The same pattern extends to any OpenAI-compatible provider — just point `OPENA
 
 > **Backward compatibility.** `DEEPSEEK_API_KEY` / `DEEPSEEK_BASE_URL` (and `LLM_API_KEY` / `LLM_BASE_URL`) are still recognized, kept only so existing setups that predate the `OPENAI_*` convention keep working. New users can ignore them and just set `OPENAI_API_KEY` + `OPENAI_BASE_URL`.
 
+## Additional tools
+
+Two demo scripts, each one command:
+
+```bash
+python3 examples/demo_options.py    # option pricing — zero deps, no key
+python3 examples/demo_debate.py     # LLM debate — needs an API key (see Configuration)
+```
+
+- `demo_options.py` prints the Black-Scholes put price and delta with labelled inputs (S, K, T, r, sigma).
+- `demo_debate.py` runs a multi-agent debate on a sample A-share ticker; without a key it prints the setup steps.
+
+> The Black-Scholes calculator is a standalone pricing formula, independent of the US options-enhancement strategies on the Phase-2 roadmap.
+
 ## Repository Structure
 
 ```
@@ -226,28 +239,6 @@ grinderalpha/
 └── strategy_params.example.json    # Example strategy params (copy and tune)
 ```
 
-## Core Modules
-
-The deterministic layer is organized around the decision lifecycle. Every module is pure Python and runs on free public data unless noted; only the debate engine needs a key.
-
-| Stage | Module | What it does |
-|-------|--------|--------------|
-| **Buy** | `bottom_accelerator.py` | Fits a log-linear trendline through historical bottoms and sizes the DCA multiplier by how far below it the price sits (per-index calibration) |
-| **Buy** | `investment/methodologies/sniper_ah.py` | "Good company + extreme cheapness": PE back to its historical bottom **and** drawdown at extremes |
-| **Value** | `valuation_engine.py` | Per-category PE/PB percentile (broad / dividend / sector / AI-chain / HK), multi-source with graceful degradation |
-| **Protect** | `investment/support_levels.py` | S1/S2 support derived from real drawdown bottoms — protection, not a strike anchor |
-| **Protect** | `investment/sell_monitors/` | Sell / stop / rebuy through the `PositionProvider` interface (3 strategies) |
-| **Decide** | `investment/decision_report.py` | Unified `DecisionReport` schema: action + per-dimension checks + derivation `trace` |
-| **Enhance** | `investment/cboe_options.py` + `options_estimator.py` | Real CBOE chain (liquidity-gated) with a pure-Python Black-Scholes fallback |
-| **Verify** | `backtest/` | Unified runner → long-term return / win-rate / max drawdown, with a data-source declaration |
-| **Debate** | `investment/debate_engine/` | Multi-agent LLM debate — an optional side tool (the only key-requiring module) |
-
-Three details worth calling out, because this is where the engineering — not the "AI" — does the work:
-
-- **Support is protection.** `support_levels.py` derives S1/S2 from real historical drawdown bottoms, not arbitrary multipliers.
-- **Estimation is a fallback, not a promise.** `options_estimator.py` (pure-Python Black-Scholes) was demoted to a documented fallback after a live test showed it off by 55 percentage points against the real CBOE chain.
-- **Stop-loss beats everything.** `decision_report.resolve_action` enforces a priority ladder — stop-loss > take-profit > adding > new positions.
-
 ## Known Limitations
 
 | Area | Status |
@@ -257,6 +248,15 @@ Three details worth calling out, because this is where the engineering — not t
 | Temperature weights | Experience-set; back-inferred from posture data (planned) |
 | Debate engine output quality | Depends on the underlying LLM; shadow mode validates before promotion |
 | Options backtests | Recent — CBOE path added 2026-08 |
+
+## Disclaimer
+
+This project is for **educational and research purposes only**.
+
+- Not intended as real trading or investment advice
+- No guarantees of any kind
+- The author assumes no liability for financial losses
+- Past performance does not indicate future results
 
 ## License
 
