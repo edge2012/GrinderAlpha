@@ -1,19 +1,27 @@
 [project]
-name = "investment-os-showcase"
-version = "0.1.0"
-description = "Engineering showcase of InvestmentOS — pure decision engines extracted from a private investment decision system"
+name = "grinderalpha"
+version = "0.2.0"
+description = "GrinderAlpha — an engineering-grade investment decision system: deterministic engines + multi-agent LLM debate"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
-authors = [{ name = "InvestmentOS" }]
+authors = [{ name = "GrinderAlpha" }]
 
 [project.optional-dependencies]
-macro = ["akshare>=1.14", "pandas>=2.0", "numpy>=1.24"]
-plot = ["matplotlib>=3.7"]
+backtest = ["numpy>=1.24", "scipy>=1.10", "pandas>=2.0"]
+valuation = ["akshare>=1.12"]
+debate = ["pydantic>=2.0", "langchain-openai>=0.1", "langchain-core>=0.2"]
 
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["engine", "engine.methodologies"]
+packages = [
+    "investment",
+    "investment.methodologies",
+    "investment.sell_monitors",
+    "investment.debate_engine",
+    "backtest",
+]
+py-modules = ["bottom_accelerator", "valuation_engine"]

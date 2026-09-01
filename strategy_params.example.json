@@ -1,0 +1,9 @@
+{
+  "_meta": {
+    "description": "Example strategy params — copy and fill in your own values.",
+    "version": "0.0"
+  },
+  "bottom_accelerator": {
+    "zones": []
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "_note": "教学示例（teaching example）：演示底部档案 schema 的完整形态。数据为公开市场历史数据，非投资建议，仅供公开库用户理解字段含义。",
+  "symbol": "600519",
+  "name": "贵州茅台",
+  "market": "A",
+  "mature_period": "2018至今（此前为成长阶段，PE 锚参考价值低）",
+  "pe_anchor": {
+    "mature_range": "20x ~ 28x",
+    "bottoms": [
+      {"date": "2018-10", "pe": 19.6, "note": "贸易战 + 塑化剂余波"},
+      {"date": "2022-10", "pe": 27.0, "note": "疫情 + 反垄断 + 经济放缓"}
+    ],
+    "trend": "PE 底部逐次抬升（19.6 → 27.0），市场对品牌护城河估值重估",
+    "current": {"pe_trailing": 20.0, "date": "YYYY-MM-DD"}
+  },
+  "drawdown_anchor": {
+    "bottoms": [
+      {"peak_date": "2018-01", "trough_date": "2018-10", "dd_pct": 26, "recovery_months": 4, "trough_price": 548.9},
+      {"peak_date": "2021-05", "trough_date": "2022-10", "dd_pct": 36, "recovery_months": 45, "trough_price": 1350.0}
+    ],
+    "current": {"price": 1350.0, "ath": 2218.0, "ath_date": "2021-05-31", "dd_pct": 39.1}
+  },
+  "forward_returns": {
+    "from_bottoms": [
+      {"date": "2018-10", "fwd_12m_pct": 108.4},
+      {"date": "2022-10", "fwd_12m_pct": 26.0}
+    ],
+    "avg_fwd_12m": 67.2
+  },
+  "sniper_range": {
+    "condition_pe": "PE < 22x",
+    "condition_dd": "回撤 > 35%",
+    "current_status": "示例状态"
+  },
+  "last_updated": "YYYY-MM-DD",
+  "data_source": "腾讯月K（后复权回撤 + 不复权 PE）+ 年报 EPS",
+  "methodology_note": "教学示例说明：PE 用不复权价 ÷ 年度 EPS（口径一）；回撤用后复权（保留分红效应，口径二）。成熟期之前 PE 极低反映市场未充分定价品牌价值，以 2018+ 为成熟期锚。"
+}
