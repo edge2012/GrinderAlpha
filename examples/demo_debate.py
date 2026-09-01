@@ -7,8 +7,13 @@ Requires an API key (see README "Configuration"):
 
 Run:
     python3 examples/demo_debate.py
+    python3 examples/demo_debate.py --ticker 00700 --company 腾讯
+
+Note: the four analyst reports (market / sentiment / news / fundamentals)
+are sample text — for real analysis, construct your own AnalysisInput.
 """
 
+import argparse
 import os
 import sys
 
@@ -25,6 +30,12 @@ def _has_key() -> bool:
 
 
 def main() -> None:
+    p = argparse.ArgumentParser(description="多智能体投资辩论")
+    p.add_argument("--ticker", default="600519", help="标的代码（A股 6 位 / 港股 5 位）")
+    p.add_argument("--company", default="贵州茅台", help="公司名")
+    p.add_argument("--date", default="2026-08-31", help="分析日期")
+    a = p.parse_args()
+
     if not _has_key():
         print("⚠️  辩论引擎需要 LLM API key，请先配置：")
         print("    export OPENAI_API_KEY=sk-...")
@@ -34,15 +45,15 @@ def main() -> None:
 
     result = run_debate(
         AnalysisInput(
-            ticker="600519",
-            company_name="贵州茅台",
-            trade_date="2026-08-31",
+            ticker=a.ticker,
+            company_name=a.company,
+            trade_date=a.date,
             market_report=(
                 "示例技术面：现价 1480 元，50 日线 1520，200 日线 1400，"
                 "短期跌破 50 日线，中长期仍在 200 日线上方。"
             ),
             sentiment_report=(
-                "示例情绪面：近期舆情中性偏空，白酒板块整体承压，资金关注度下降。"
+                "示例情绪面：近期舆情中性偏空，板块整体承压，资金关注度下降。"
             ),
             news_report=(
                 "示例宏观新闻：消费复苏节奏温和，高端白酒批价企稳，行业去库存接近尾声。"
