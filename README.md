@@ -2,17 +2,19 @@
 
 English | [中文](README.zh.md)
 
-An engineering-grade investment decision system — deterministic engines for discipline, a multi-agent debate layer for judgment. Every decision shows its work, so it can be read and backtested instead of trusted on faith.
+An engineering-grade investment decision system — deterministic engines for discipline, a multi-agent debate layer for judgment. Every decision is traceable: read it, backtest it — no black box.
 
 ## Why GrinderAlpha
 
-Chasing rallies and hesitating to cut losses are human nature — discipline is the part humans are worst at. Most "AI trading" tools answer with a black-box signal. GrinderAlpha answers differently: it turns discipline into deterministic rules (when to buy, add, trim, exit, rebuy), and every decision it emits carries a derivation trace — which data went in, which rule fired, what came out.
+Discipline is a long-term investor's only edge — and the thing humans are worst at. You know to buy when the market panics and trim when it's euphoric; but when your money is on the line, emotion wins. Most "AI trading" tools make this worse: a black-box signal you're asked to trust. GrinderAlpha does the opposite — it codifies discipline into deterministic rules (when to buy, add, trim, exit, rebuy), and every decision shows its work: which data went in, which rule fired, what came out. You don't trust it; you audit it.
+
+**Scope** — this release targets **A-share / HK (China equities)**: ETF dollar-cost-averaging as the main line, A/H stock sniping as the advanced path. US methodologies are on the roadmap (see [Known Limitations](#known-limitations)).
 
 This is **not** high-frequency trading. The cadence is daily, weekly, monthly — low frequency, but strict. The goal is the certainty of discipline, not speed.
 
 ## What a decision looks like
 
-One command, no key, no dependencies — a complete, human-readable decision report:
+Don't take our word for it. One command — no key, no dependencies — and you get a complete, human-readable decision report:
 
 ```bash
 python3 examples/demo_decision_report.py
@@ -59,7 +61,9 @@ python3 examples/demo_decision_report.py
 数据截至 2026-08-31 · schema v1.0
 ```
 
-Three layers in one report: a **conclusion** (what to do now), **evidence** (each dimension with its rule and data source), and a **derivation trace** (every step: input → rule → output). The trace is the whole point — it turns a recommendation into something you can audit. *(The demo prints in Chinese; run the command to reproduce this exact output.)*
+Three layers in one report: a **conclusion** (what to do now), **evidence** (each dimension with its rule and data source), and a **derivation trace** (every step: input → rule → output). The trace is the whole point — it turns a recommendation into something you can audit.
+
+> **ETF vs index** — `510300` is the tradable ETF tracking the CSI 300 index (`sh000300`). The bottom trendline is judged on the *index* (in points), while buying and selling execute on the *ETF* (in yuan). A per-ETF calibration factor (`510300 → ×992`) converts between the two, which is why the report shows both "¥4.20" and "折算指数 4166". The backtest command above runs on `sh000300` (the index) because historical K-line data lives at index level.
 
 ## Design Principles
 
@@ -70,22 +74,21 @@ Three layers in one report: a **conclusion** (what to do now), **evidence** (eac
 
 ## Architecture
 
-Two layers, a clear division of labor:
+Two layers, two different jobs:
 
-- **Deterministic engines** (`investment/` + top-level engines) — rules and backtests. Bottom acceleration, valuation, support levels, Black-Scholes. Pure math, zero third-party dependencies.
-- **LLM debate engine** (`investment/debate_engine/`) — a multi-agent debate that turns raw data into a structured decision.
+- **Deterministic engines** (`investment/` + top-level engines) — the main pipeline. Rules and backtests: bottom acceleration, valuation, support levels, Black-Scholes. Pure math, zero dependencies, no API key.
+- **LLM debate engine** (`investment/debate_engine/`) — an *optional* side tool for qualitative, multi-angle analysis. It needs an API key and is invoked on demand; it is **not** part of the deterministic pipeline.
 
-The pipeline, end to end:
+The main pipeline (deterministic, no key):
 
 ```mermaid
 flowchart LR
     P["Providers<br/>data · params · profiles · positions"] --> E["Deterministic engines<br/>bottom · valuation · sniper · support · sell-monitors · backtest"]
     E --> R["DecisionReport<br/>unified schema · trace"]
-    R --> D["LLM debate engine<br/>multi-agent · adversarial"]
-    D --> O["Recommendation<br/>not an order"]
+    R --> O["Recommendation<br/>action · not an order"]
 ```
 
-The debate engine orchestrates several LLM agents in a pipeline:
+The debate engine, when you choose to run it, orchestrates several LLM agents:
 
 ```mermaid
 flowchart LR
@@ -203,7 +206,7 @@ grinderalpha/
 │   ├── decision_report.py          # Unified decision report schema (Action + resolve_action)
 │   ├── methodologies/              # Buy-point methodologies (base + sniper_ah)
 │   ├── sell_monitors/              # Sell monitors (PositionProvider + 3 strategies)
-│   └── debate_engine/              # LLM multi-agent debate
+│   └── debate_engine/              # LLM multi-agent debate (optional side tool)
 ├── data/bottom_profiles/           # Sample bottom profiles
 ├── examples/                       # Runnable demos (decision report, …)
 └── strategy_params.example.json    # Example strategy params (copy and tune)
@@ -223,7 +226,7 @@ The deterministic layer is organized around the decision lifecycle. Every module
 | **Decide** | `investment/decision_report.py` | Unified `DecisionReport` schema: action + per-dimension checks + derivation `trace` |
 | **Enhance** | `investment/cboe_options.py` + `options_estimator.py` | Real CBOE chain (liquidity-gated) with a pure-Python Black-Scholes fallback |
 | **Verify** | `backtest/` | Unified runner → long-term return / win-rate / max drawdown, with a data-source declaration |
-| **Debate** | `investment/debate_engine/` | Multi-agent LLM debate (the only key-requiring module) |
+| **Debate** | `investment/debate_engine/` | Multi-agent LLM debate — an optional side tool (the only key-requiring module) |
 
 Three details worth calling out, because this is where the engineering — not the "AI" — does the work:
 
