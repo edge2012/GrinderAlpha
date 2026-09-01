@@ -2,7 +2,7 @@
 
 English | [中文](README.zh.md)
 
-An engineering-grade investment decision system — deterministic engines for discipline, a multi-agent debate layer for judgment. Every decision is traceable: read it, backtest it — no black box.
+An engineering-grade investment decision system — discipline as code, every decision traceable and backtestable.
 
 ## Why GrinderAlpha
 
