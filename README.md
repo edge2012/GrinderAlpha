@@ -30,7 +30,6 @@ python3 examples/demo_decision_report.py
 证据
   ✓ 大底趋势     现价折算指数 4166，趋势线投影 5080，偏离 -18%  [腾讯行情(实时)]
   ✓ 估值       指数 PE 分位 28% → 不贵  [akshare]
-  ✓ 仓位纪律     单标的占比 12% < 15% 纪律线  [用户持仓]
   ✓ 止损       距 50MA -3% → 建仓期仅展示不拦截  [腾讯日K]
 
 推导
@@ -74,12 +73,7 @@ Three layers in one report: a **conclusion** (what to do now), **evidence** (eac
 
 ## Architecture
 
-Two layers, two different jobs:
-
-- **Deterministic engines** (`investment/` + top-level engines) — the main pipeline. Rules and backtests: bottom acceleration, valuation, support levels, Black-Scholes. Pure math, zero dependencies, no API key.
-- **LLM debate engine** (`investment/debate_engine/`) — an *optional* side tool for qualitative, multi-angle analysis. It needs an API key and is invoked on demand; it is **not** part of the deterministic pipeline.
-
-The main pipeline (deterministic, no key):
+The deterministic main pipeline — rules and backtests, pure math, zero dependencies, no key:
 
 ```mermaid
 flowchart LR
@@ -88,7 +82,14 @@ flowchart LR
     R --> O["Recommendation<br/>action · not an order"]
 ```
 
-The debate engine, when you choose to run it, orchestrates several LLM agents:
+On top sits a small **toolbox** of optional, on-demand tools — they share the same data but are not part of the main pipeline:
+
+| Tool | What it does | Needs key |
+|------|--------------|-----------|
+| LLM debate engine | multi-agent, qualitative analysis | yes |
+| Option pricing (Black-Scholes) | standalone pricing calculator | no |
+
+The debate engine orchestrates several LLM agents:
 
 ```mermaid
 flowchart LR
@@ -159,19 +160,15 @@ The deterministic engines depend only on the Python standard library. Backtests 
 
 ## Additional tools
 
-Two standalone tools sit outside the ETF DCA main line, for when you want to explore further:
-
-**Option pricing (Black-Scholes)** — a pure-Python, zero-dependency calculator:
+Two demo scripts, each one command:
 
 ```bash
-python3 -c "from investment.options_estimator import bs_put_price; print(bs_put_price(94, 82, 30/365, 0.04, 0.60))"
+python3 examples/demo_options.py    # option pricing — zero deps, no key
+python3 examples/demo_debate.py     # LLM debate — needs an API key (see Configuration)
 ```
 
-**LLM debate engine** — multi-agent, qualitative analysis. It needs an API key (see [Configuration](#configuration)) and is invoked on demand:
-
-```python
-from investment.debate_engine import DebateEngine, AnalysisInput, run_debate
-```
+- `demo_options.py` prints the Black-Scholes put price and delta with labelled inputs (S, K, T, r, sigma).
+- `demo_debate.py` runs a multi-agent debate on a sample A-share ticker; without a key it prints the setup steps.
 
 > The Black-Scholes calculator is a standalone pricing formula, independent of the US options-enhancement strategies on the Phase-2 roadmap.
 

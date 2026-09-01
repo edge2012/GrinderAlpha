@@ -30,7 +30,6 @@ python3 examples/demo_decision_report.py
 证据
   ✓ 大底趋势     现价折算指数 4166，趋势线投影 5080，偏离 -18%  [腾讯行情(实时)]
   ✓ 估值       指数 PE 分位 28% → 不贵  [akshare]
-  ✓ 仓位纪律     单标的占比 12% < 15% 纪律线  [用户持仓]
   ✓ 止损       距 50MA -3% → 建仓期仅展示不拦截  [腾讯日K]
 
 推导
@@ -74,12 +73,7 @@ python3 examples/demo_decision_report.py
 
 ## 架构
 
-两层，各司其职：
-
-- **确定性引擎**（`investment/` + 顶层引擎）—— 主流程。规则与回测：底部加速、估值、支撑位、Black-Scholes。纯数学，零依赖，无需 API key。
-- **LLM 辩论引擎**（`investment/debate_engine/`）—— 一个*可选*的旁路工具，做定性、多角度的分析。需要 API key，按需主动调用；它**不是**确定性主流程的一部分。
-
-主流程（确定性，无需 key）：
+确定性主流程 —— 规则与回测，纯数学，零依赖，无需 key：
 
 ```mermaid
 flowchart LR
@@ -88,7 +82,14 @@ flowchart LR
     R --> O["建议<br/>动作 · 非订单"]
 ```
 
-当你选择运行辩论引擎时，它编排多个 LLM 智能体：
+之上是一个小小的**工具箱**，可选的、按需调用的工具 —— 共享同一份数据，但不属于主流程：
+
+| 工具 | 作用 | 需 key |
+|------|------|--------|
+| LLM 辩论引擎 | 多智能体、定性分析 | 是 |
+| 期权定价（Black-Scholes） | 独立定价计算器 | 否 |
+
+辩论引擎编排多个 LLM 智能体：
 
 ```mermaid
 flowchart LR
@@ -159,19 +160,15 @@ python -m backtest.run entry_signal --symbol sh000300  # 对沪深300跑一个
 
 ## 额外工具
 
-主线 ETF 定投闭环之外，还有两个独立工具，想进一步探索时可以试：
-
-**期权定价（Black-Scholes）** —— 纯 Python、零依赖的计算器：
+两个 demo 脚本，各一条命令：
 
 ```bash
-python3 -c "from investment.options_estimator import bs_put_price; print(bs_put_price(94, 82, 30/365, 0.04, 0.60))"
+python3 examples/demo_options.py    # 期权定价 —— 零依赖、无需 key
+python3 examples/demo_debate.py     # LLM 辩论 —— 需要 API key（见「配置」）
 ```
 
-**LLM 辩论引擎** —— 多智能体定性分析。需要 API key（见[配置](#配置)），按需主动调用：
-
-```python
-from investment.debate_engine import DebateEngine, AnalysisInput, run_debate
-```
+- `demo_options.py` 打印 Black-Scholes 看跌期权价格与 Delta，并标注输入参数（S、K、T、r、sigma）。
+- `demo_debate.py` 对一个示例 A 股标的跑多智能体辩论；没配 key 时会打印配置步骤。
 
 > Black-Scholes 计算器是独立的定价公式，与 Phase-2 路线图上的美股期权增强策略无关。
 
@@ -235,15 +232,15 @@ grinderalpha/
 
 | 阶段 | 模块 | 作用 |
 |------|------|------|
-| **买入** | `bottom_accelerator.py` | 对历史大底拟合对数线性趋势线，按价格低于趋势线的深度确定 DCA 倍率（各指数独立校准） |
-| **买入** | `investment/methodologies/sniper_ah.py` | 「好公司 + 极端便宜」：PE 回到历史底部区间，且回撤触及极值 |
-| **估值** | `valuation_engine.py` | 分类型 PE/PB 百分位（宽基 / 红利 / 行业 / AI 链 / 港股），多源优雅降级 |
-| **保护** | `investment/support_levels.py` | 从真实历史回撤底部提取 S1/S2 —— 支撑是保护，不是行权价的锚 |
-| **保护** | `investment/sell_monitors/` | 通过 `PositionProvider` 接口执行卖出 / 止损 / 回补（3 个策略） |
-| **决策** | `investment/decision_report.py` | 统一 `DecisionReport` schema：动作 + 逐维度检查 + 推导链 `trace` |
-| **增强** | `investment/cboe_options.py` + `options_estimator.py` | 真实 CBOE 期权链（流动性门槛）+ 纯 Python Black-Scholes 兜底 |
-| **验证** | `backtest/` | 统一入口 → 长期收益 / 胜率 / 最大回撤，附带数据来源声明 |
-| **辩论** | `investment/debate_engine/` | 多智能体 LLM 辩论 —— 可选旁路工具（唯一需要 key 的模块） |
+| **Buy** | `bottom_accelerator.py` | 对历史大底拟合对数线性趋势线，按价格低于趋势线的深度确定 DCA 倍率（各指数独立校准） |
+| **Buy** | `investment/methodologies/sniper_ah.py` | 「好公司 + 极端便宜」：PE 回到历史底部区间，且回撤触及极值 |
+| **Value** | `valuation_engine.py` | 分类型 PE/PB 百分位（宽基 / 红利 / 行业 / AI 链 / 港股），多源优雅降级 |
+| **Protect** | `investment/support_levels.py` | 从真实历史回撤底部提取 S1/S2 —— 支撑是保护，不是行权价的锚 |
+| **Protect** | `investment/sell_monitors/` | 通过 `PositionProvider` 接口执行卖出 / 止损 / 回补（3 个策略） |
+| **Decide** | `investment/decision_report.py` | 统一 `DecisionReport` schema：动作 + 逐维度检查 + 推导链 `trace` |
+| **Enhance** | `investment/cboe_options.py` + `options_estimator.py` | 真实 CBOE 期权链（流动性门槛）+ 纯 Python Black-Scholes 兜底 |
+| **Verify** | `backtest/` | 统一入口 → 长期收益 / 胜率 / 最大回撤，附带数据来源声明 |
+| **Debate** | `investment/debate_engine/` | 多智能体 LLM 辩论 —— 可选旁路工具（唯一需要 key 的模块） |
 
 三点值得单独说明，因为这是「工程」而非「AI」真正起作用的地方：
 

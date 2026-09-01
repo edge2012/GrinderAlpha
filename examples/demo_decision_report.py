@@ -1,6 +1,6 @@
 """DecisionReport demo — 用示例数据组装一份完整决策报告，并演示动作裁决。
 
-运行：python engine/examples/demo_decision_report.py
+运行：python3 examples/demo_decision_report.py
 （零依赖，不需要联网、不需要 key）
 
 这个 demo 展示 DecisionReport 的「三合一」：
@@ -54,12 +54,6 @@ def build_etf_dca_report() -> DecisionReport:
                 detail="指数 PE 分位 28% → 不贵",
                 rule="估值确认 upgraded",
                 data_source="akshare",
-            ),
-            DimensionCheck(
-                name="仓位纪律", ok=True,
-                detail="单标的占比 12% < 15% 纪律线",
-                rule="未超 15%",
-                data_source="用户持仓",
             ),
             DimensionCheck(
                 name="止损", ok=True,
