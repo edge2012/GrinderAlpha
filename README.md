@@ -140,6 +140,8 @@ This project is for **educational and research purposes only**.
 
 ## Quick Start
 
+The main line — a decision report and a backtest — needs no API key:
+
 ```bash
 git clone https://github.com/edge2012/GrinderAlpha.git
 cd GrinderAlpha
@@ -147,16 +149,31 @@ cd GrinderAlpha
 # 1. See a full decision report (zero deps, no key)
 python3 examples/demo_decision_report.py
 
-# 2. Black-Scholes option pricing (pure Python, zero dependencies)
-python3 -c "from investment.options_estimator import bs_put_price; print(bs_put_price(94, 82, 30/365, 0.04, 0.60))"
-
-# 3. Backtests (install dependencies first)
+# 2. Backtests (install dependencies first)
 pip install -r requirements.txt
 python -m backtest.run --list                          # list all backtests
 python -m backtest.run entry_signal --symbol sh000300  # run one on CSI 300
 ```
 
 The deterministic engines depend only on the Python standard library. Backtests need `numpy`/`pandas`/`scipy`; valuation data fallback needs `akshare`. See `requirements.txt`.
+
+## Additional tools
+
+Two standalone tools sit outside the ETF DCA main line, for when you want to explore further:
+
+**Option pricing (Black-Scholes)** — a pure-Python, zero-dependency calculator:
+
+```bash
+python3 -c "from investment.options_estimator import bs_put_price; print(bs_put_price(94, 82, 30/365, 0.04, 0.60))"
+```
+
+**LLM debate engine** — multi-agent, qualitative analysis. It needs an API key (see [Configuration](#configuration)) and is invoked on demand:
+
+```python
+from investment.debate_engine import DebateEngine, AnalysisInput, run_debate
+```
+
+> The Black-Scholes calculator is a standalone pricing formula, independent of the US options-enhancement strategies on the Phase-2 roadmap.
 
 ## Configuration
 

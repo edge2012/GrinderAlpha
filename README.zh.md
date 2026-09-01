@@ -140,6 +140,8 @@ EXIT > TRIM > ADD > BUY > REBUY > HOLD / WAIT
 
 ## 快速开始
 
+主线 —— 一份决策报告 + 一次回测 —— 无需 API key：
+
 ```bash
 git clone https://github.com/edge2012/GrinderAlpha.git
 cd GrinderAlpha
@@ -147,16 +149,31 @@ cd GrinderAlpha
 # 1. 看一份完整决策报告（零依赖、无需 key）
 python3 examples/demo_decision_report.py
 
-# 2. Black-Scholes 期权定价（纯 Python，零依赖）
-python3 -c "from investment.options_estimator import bs_put_price; print(bs_put_price(94, 82, 30/365, 0.04, 0.60))"
-
-# 3. 回测（先装依赖）
+# 2. 回测（先装依赖）
 pip install -r requirements.txt
 python -m backtest.run --list                          # 列出所有回测
 python -m backtest.run entry_signal --symbol sh000300  # 对沪深300跑一个
 ```
 
 确定性引擎只依赖 Python 标准库。回测需要 `numpy`/`pandas`/`scipy`；估值数据兜底需要 `akshare`。见 `requirements.txt`。
+
+## 额外工具
+
+主线 ETF 定投闭环之外，还有两个独立工具，想进一步探索时可以试：
+
+**期权定价（Black-Scholes）** —— 纯 Python、零依赖的计算器：
+
+```bash
+python3 -c "from investment.options_estimator import bs_put_price; print(bs_put_price(94, 82, 30/365, 0.04, 0.60))"
+```
+
+**LLM 辩论引擎** —— 多智能体定性分析。需要 API key（见[配置](#配置)），按需主动调用：
+
+```python
+from investment.debate_engine import DebateEngine, AnalysisInput, run_debate
+```
+
+> Black-Scholes 计算器是独立的定价公式，与 Phase-2 路线图上的美股期权增强策略无关。
 
 ## 配置
 
