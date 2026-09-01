@@ -1,8 +1,7 @@
 {
   "_meta": {
-    "description": "EXAMPLE ONLY — placeholder params for the public showcase. Real params live outside Git.",
-    "version": "0.0",
-    "warning": "All values are zero-filled placeholders."
+    "description": "Example strategy params — copy and fill in your own values.",
+    "version": "0.0"
   },
   "bottom_accelerator": {
     "zones": []

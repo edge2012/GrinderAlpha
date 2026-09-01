@@ -13,7 +13,7 @@ This is **not** high-frequency trading. The cadence is daily, weekly, monthly �
 ## Design Principles
 
 - **Methodology as code** — each decision type (buy point, valuation, support level, stop-loss) is distilled into rules that can be stated, repeated, and backtested.
-- **Providers, not hard dependencies** — data access, strategy params, bottom profiles, and positions are each abstracted behind a Provider interface, with a public (self-contained) and a private (production) implementation.
+- **Providers, not hard dependencies** — data access, strategy params, bottom profiles, and positions are each abstracted behind a Provider interface, so the engines stay decoupled from where that data comes from.
 - **Discipline by machine** — discipline is counter to human nature, so it is handed to code.
 
 ## Architecture
@@ -50,7 +50,7 @@ Design highlights:
 - **Adversarial debate** — bull and bear agents argue against each other, rather than a single LLM producing one opinion.
 - **Tiered models** — judge/PM nodes use a stronger model; debaters use a faster one.
 - **Context compression** — a compressor caps context across debate rounds.
-- **Shadow mode** — the debate runs alongside the baseline first; it only replaces the baseline after proving itself.
+- **Shadow mode** — the debate first runs read-only alongside the deterministic output, and only affects the final recommendation after proving itself.
 
 The LLM produces a *recommendation*, not an order. Nothing here places trades automatically.
 
@@ -109,7 +109,7 @@ Common endpoints:
 
 The same pattern extends to any OpenAI-compatible provider — just point `OPENAI_BASE_URL` at its `/v1` endpoint.
 
-> **Backward compatibility only.** `DEEPSEEK_API_KEY` / `DEEPSEEK_BASE_URL` (and `LLM_API_KEY` / `LLM_BASE_URL`) are still read, but only so the private system's default provider keeps working unchanged. As a public-repo user, ignore them and set `OPENAI_API_KEY` + `OPENAI_BASE_URL`.
+> **Backward compatibility.** `DEEPSEEK_API_KEY` / `DEEPSEEK_BASE_URL` (and `LLM_API_KEY` / `LLM_BASE_URL`) are still recognized, kept only so existing setups that predate the `OPENAI_*` convention keep working. New users can ignore them and just set `OPENAI_API_KEY` + `OPENAI_BASE_URL`.
 
 ## Repository Structure
 
@@ -118,7 +118,7 @@ grinderalpha/
 ├── backtest/                       # Backtest runner (core / data / run)
 ├── bottom_accelerator.py           # Bottom acceleration: trendline + DCA multiplier
 ├── valuation_engine.py             # Valuation: per-category PE/PB percentile
-├── investment/                     # Core package (name intentionally kept "investment")
+├── investment/                     # Core package (engines + providers + debate)
 │   ├── data_access.py              # DataAccess provider (quotes + valuation)
 │   ├── param_provider.py           # ParamProvider (strategy params)
 │   ├── profile_provider.py         # ProfileProvider (bottom profiles)
@@ -131,7 +131,7 @@ grinderalpha/
 │   └── debate_engine/              # LLM multi-agent debate
 ├── data/bottom_profiles/           # Sample bottom profiles
 ├── examples/                       # Teaching examples
-└── strategy_params.example.json    # Placeholder params (zero-filled)
+└── strategy_params.example.json    # Example strategy params (copy and tune)
 ```
 
 ## Core Modules
@@ -158,13 +158,13 @@ Three details worth calling out, because this is where the engineering — not t
 
 ## Known Limitations
 
-| Limitation | Status |
-|-----------|--------|
-| Only A/H methodology shipped; US methodologies (trend/value/growth/turnaround) are Phase 2 | Enum placeholders present, implementations deferred |
-| Macro regime layer (multi-indicator posture classification) is Phase 2 | Not shipped in this snapshot |
-| Debate engine output quality depends on the underlying LLM | Shadow mode validates before promotion |
-| Options backtests are recent | CBOE path added 2026-08 |
-| Temperature weights are experience-set | Back-infer from posture data (planned) |
+| Area | Status |
+|-------|--------|
+| US methodologies (trend / value / growth / turnaround) | Planned |
+| Macro regime layer (multi-indicator posture classification) | Planned |
+| Temperature weights | Experience-set; back-inferred from posture data (planned) |
+| Debate engine output quality | Depends on the underlying LLM; shadow mode validates before promotion |
+| Options backtests | Recent — CBOE path added 2026-08 |
 
 ## License
 

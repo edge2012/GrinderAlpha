@@ -13,7 +13,7 @@ GrinderAlpha 把投资决策过程工程化为一个系统。从底部识别、�
 ## 设计原则
 
 - **方法论即代码** —— 每一种决策类型（买点、估值、支撑位、止损）都被提炼为可陈述、可重复、可回测的规则。
-- **Provider 而非硬依赖** —— 数据访问、策略参数、底部档案、持仓，各自抽象在 Provider 接口之后，分别有公开（自包含）与私有（生产）两种实现。
+- **Provider 而非硬依赖** —— 数据访问、策略参数、底部档案、持仓，各自抽象在 Provider 接口之后，让引擎与数据的来源解耦。
 - **机器执行纪律** —— 纪律违逆人性，所以交给代码。
 
 ## 架构
@@ -50,7 +50,7 @@ flowchart LR
 - **对抗式辩论** —— 多方与空方智能体彼此交锋，而非单个 LLM 给出一个观点。
 - **分层模型** —— 裁判/组合经理节点用更强的模型；辩论方用更快的模型。
 - **上下文压缩** —— 压缩器在多轮辩论中封顶上下文。
-- **影子模式** —— 辩论先与基线并行运行，证明自己后才替换基线。
+- **影子模式** —— 辩论先以只读方式与确定性输出并行运行，证明自己后才影响最终建议。
 
 LLM 产出的是*建议*，不是订单。这里没有任何东西会自动下单。
 
@@ -109,7 +109,7 @@ export OPENAI_BASE_URL=https://api.openai.com/v1
 
 同样的方式适用于任何 OpenAI 兼容 provider —— 把 `OPENAI_BASE_URL` 指向它的 `/v1` 端点即可。
 
-> **仅向后兼容。** `DEEPSEEK_API_KEY` / `DEEPSEEK_BASE_URL`（以及 `LLM_API_KEY` / `LLM_BASE_URL`）仍会被读取，但只是为了私有系统默认 provider 能无改动地继续工作。作为公开库用户，忽略它们，设置 `OPENAI_API_KEY` + `OPENAI_BASE_URL` 即可。
+> **向后兼容。** `DEEPSEEK_API_KEY` / `DEEPSEEK_BASE_URL`（以及 `LLM_API_KEY` / `LLM_BASE_URL`）仍会被识别，保留只是为了兼容 `OPENAI_*` 约定之前的旧配置。新用户忽略它们，设置 `OPENAI_API_KEY` + `OPENAI_BASE_URL` 即可。
 
 ## 仓库结构
 
@@ -118,7 +118,7 @@ grinderalpha/
 ├── backtest/                       # 回测入口（core / data / run）
 ├── bottom_accelerator.py           # 底部加速：趋势线 + DCA 倍率
 ├── valuation_engine.py             # 估值：分类型 PE/PB 百分位
-├── investment/                     # 核心包（包名有意保留 "investment"）
+├── investment/                     # 核心包（引擎 + provider + 辩论）
 │   ├── data_access.py              # DataAccess provider（行情 + 估值）
 │   ├── param_provider.py           # ParamProvider（策略参数）
 │   ├── profile_provider.py         # ProfileProvider（底部档案）
@@ -131,7 +131,7 @@ grinderalpha/
 │   └── debate_engine/              # LLM 多智能体辩论
 ├── data/bottom_profiles/           # 示例底部档案
 ├── examples/                       # 教学示例
-└── strategy_params.example.json    # 占位参数（全 0）
+└── strategy_params.example.json    # 策略参数示例（复制后按需调整）
 ```
 
 ## 核心模块
@@ -158,13 +158,13 @@ grinderalpha/
 
 ## 已知限制
 
-| 限制 | 状态 |
+| 领域 | 状态 |
 |------|------|
-| 仅发布 A/H 方法论；美股方法论（trend/value/growth/turnaround）为 Phase 2 | 枚举占位已存在，实现延后 |
-| 宏观 regime 层（多指标姿态分类）为 Phase 2 | 本快照未发布 |
-| 辩论引擎输出质量取决于底层 LLM | 影子模式验证后才替换 |
-| 期权回测较新 | CBOE 路径 2026-08 加入 |
-| 温度权重为经验设定 | 计划从姿态数据反推 |
+| 美股方法论（trend / value / growth / turnaround） | 规划中 |
+| 宏观 regime 层（多指标姿态分类） | 规划中 |
+| 温度权重 | 经验设定；计划从姿态数据反推 |
+| 辩论引擎输出质量 | 取决于底层 LLM；影子模式验证后才启用 |
+| 期权回测 | 较新 —— CBOE 路径 2026-08 加入 |
 
 ## License
 
