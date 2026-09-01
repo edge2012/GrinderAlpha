@@ -2,7 +2,7 @@
 
 English | [中文](README.zh.md)
 
-An engineering-grade investment decision system — deterministic engines for discipline, a multi-agent debate layer for judgment. Every decision is traceable: read it, backtest it — no black box.
+An engineering-grade investment decision system — discipline as code, every decision traceable and backtestable.
 
 ## Why GrinderAlpha
 
@@ -73,7 +73,8 @@ git clone https://github.com/edge2012/GrinderAlpha.git
 cd GrinderAlpha
 
 # 1. See a full decision report (zero deps, no key)
-python3 examples/demo_decision_report.py
+python3 examples/demo_decision_report.py                    # CSI 300
+python3 examples/demo_decision_report.py --symbol 510050    # your own ETF
 
 # 2. Backtests (install dependencies first)
 pip install -r requirements.txt
@@ -207,12 +208,14 @@ The same pattern extends to any OpenAI-compatible provider — just point `OPENA
 Two demo scripts, each one command:
 
 ```bash
-python3 examples/demo_options.py    # option pricing — zero deps, no key
-python3 examples/demo_debate.py     # LLM debate — needs an API key (see Configuration)
+python3 examples/demo_options.py                            # option pricing — zero deps, no key
+python3 examples/demo_options.py --S 100 --K 90 --sigma 0.5 # your own parameters
+python3 examples/demo_debate.py                             # LLM debate — needs an API key (see Configuration)
+python3 examples/demo_debate.py --ticker 00700              # your own ticker
 ```
 
-- `demo_options.py` prints the Black-Scholes put price and delta with labelled inputs (S, K, T, r, sigma).
-- `demo_debate.py` runs a multi-agent debate on a sample A-share ticker; without a key it prints the setup steps.
+- `demo_options.py` prices a put via `--S/--K/--T-days/--r/--sigma` (run `--help` for the full list).
+- `demo_debate.py` runs a multi-agent debate via `--ticker/--company/--date`; without a key it prints the setup steps. The four analyst reports are sample text — build your own `AnalysisInput` for real analysis.
 
 > The Black-Scholes calculator is a standalone pricing formula, independent of the US options-enhancement strategies on the Phase-2 roadmap.
 

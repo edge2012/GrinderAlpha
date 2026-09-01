@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-一个工程化的投资决策系统 —— 确定性引擎负责纪律，多智能体辩论层负责判断。每一个决策都可追溯：读得懂、可回测 —— 没有黑箱。
+一个工程化的投资决策系统 —— 纪律即代码，每个决策都可追溯、可回测。
 
 ## 为什么是 GrinderAlpha
 
@@ -73,7 +73,8 @@ git clone https://github.com/edge2012/GrinderAlpha.git
 cd GrinderAlpha
 
 # 1. 看一份完整决策报告（零依赖、无需 key）
-python3 examples/demo_decision_report.py
+python3 examples/demo_decision_report.py                    # 沪深300
+python3 examples/demo_decision_report.py --symbol 510050    # 换成你自己的 ETF
 
 # 2. 回测（先装依赖）
 pip install -r requirements.txt
@@ -207,12 +208,14 @@ export OPENAI_BASE_URL=https://api.openai.com/v1
 两个 demo 脚本，各一条命令：
 
 ```bash
-python3 examples/demo_options.py    # 期权定价 —— 零依赖、无需 key
-python3 examples/demo_debate.py     # LLM 辩论 —— 需要 API key（见「配置」）
+python3 examples/demo_options.py                            # 期权定价 —— 零依赖、无需 key
+python3 examples/demo_options.py --S 100 --K 90 --sigma 0.5 # 传你自己的参数
+python3 examples/demo_debate.py                             # LLM 辩论 —— 需要 API key（见「配置」）
+python3 examples/demo_debate.py --ticker 00700              # 换你自己的标的
 ```
 
-- `demo_options.py` 打印 Black-Scholes 看跌期权价格与 Delta，并标注输入参数（S、K、T、r、sigma）。
-- `demo_debate.py` 对一个示例 A 股标的跑多智能体辩论；没配 key 时会打印配置步骤。
+- `demo_options.py` 通过 `--S/--K/--T-days/--r/--sigma` 定价（`--help` 看全参数）。
+- `demo_debate.py` 通过 `--ticker/--company/--date` 跑多智能体辩论；没配 key 时会打印配置步骤。四份分析师报告是示例文本——真实分析请自己构造 `AnalysisInput`。
 
 > Black-Scholes 计算器是独立的定价公式，与 Phase-2 路线图上的美股期权增强策略无关。
 
