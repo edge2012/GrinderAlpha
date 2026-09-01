@@ -23,36 +23,14 @@ Two layers, a clear division of labor:
 - **Deterministic engines** (`investment/` + top-level engines) — rules and backtests. Bottom acceleration, valuation, support levels, Black-Scholes. Pure math, zero third-party dependencies.
 - **LLM debate engine** (`investment/debate_engine/`) — a multi-agent debate that turns raw data into a structured decision.
 
+The pipeline, end to end:
+
 ```mermaid
-flowchart TB
-    subgraph P["Provider Layer"]
-        direction LR
-        DA[DataAccess<br/>quotes / valuation]
-        PP[ParamProvider<br/>strategy params]
-        PR[ProfileProvider<br/>bottom profiles]
-        PO[PositionProvider<br/>positions]
-    end
-
-    subgraph E["Deterministic Engines · pure Python · zero deps"]
-        direction LR
-        BA[Bottom<br/>Acceleration]
-        VE[Valuation]
-        SN[Sniper<br/>A/H]
-        SL[Support<br/>Levels]
-        OP[Options]
-        SM[Sell<br/>Monitors]
-        BT[Backtest]
-    end
-
-    DR[DecisionReport<br/>unified schema]
-
-    subgraph D["LLM Debate Engine · OpenAI-compatible"]
-        DE[Multi-agent<br/>Debate]
-    end
-
-    P --> E --> DR
-    E --> D
-    DR --> D
+flowchart LR
+    P["Providers<br/>data · params · profiles · positions"] --> E["Deterministic engines<br/>bottom · valuation · sniper · support · sell-monitors · backtest"]
+    E --> R["DecisionReport<br/>unified schema · trace"]
+    R --> D["LLM debate engine<br/>multi-agent · adversarial"]
+    D --> O["Recommendation<br/>not an order"]
 ```
 
 The debate engine orchestrates several LLM agents in a pipeline:
@@ -104,41 +82,34 @@ The deterministic engines depend only on the Python standard library. Backtests 
 
 ## Configuration
 
-Most features need no API key — only the LLM debate engine requires one.
+Everything runs on free public data with no key — only the LLM debate engine needs one.
 
 | Feature | Key required | Notes |
 |---------|-------------|-------|
 | Deterministic engines (bottom, valuation, support, options) | None | Free public data (Tencent quotes, CBOE) |
 | Valuation data fallback | None | `akshare` (legulegu / Danjuan), free |
-| `investment/debate_engine/` (LLM debate) | `OPENAI_API_KEY` (or any OpenAI-compatible key) | Provider-agnostic; DeepSeek is the default fallback |
+| `investment/debate_engine/` (LLM debate) | `OPENAI_API_KEY` + `OPENAI_BASE_URL` | Any OpenAI-compatible endpoint |
 
-### Setting keys
+### LLM provider (debate engine only)
 
-The debate engine uses an OpenAI-compatible client (`langchain_openai.ChatOpenAI`), so **any OpenAI-compatible endpoint** works — OpenAI, DeepSeek, or a self-hosted vLLM.
-
-Either approach works:
-
-**Option 1 — environment variables:**
+The debate engine uses an OpenAI-compatible client (`langchain_openai.ChatOpenAI`), so it works with any endpoint that speaks the OpenAI `/v1` protocol — OpenAI, DeepSeek, Qwen, GLM, or a self-hosted vLLM / LM Studio. Set both variables:
 
 ```bash
 export OPENAI_API_KEY=sk-...
-export OPENAI_BASE_URL=https://api.openai.com/v1   # or your own endpoint
+export OPENAI_BASE_URL=https://api.openai.com/v1
 ```
 
-**Option 2 — a `.env` file** (auto-loaded by the debate engine):
+Common endpoints:
 
-```bash
-# .env in the project root
-OPENAI_API_KEY=sk-...
-OPENAI_BASE_URL=https://api.openai.com/v1
-```
+| Provider | `OPENAI_BASE_URL` |
+|----------|-------------------|
+| OpenAI | `https://api.openai.com/v1` |
+| DeepSeek | `https://api.deepseek.com/v1` |
+| Self-hosted vLLM / LM Studio | `http://localhost:8000/v1` |
 
-Resolution order (first hit wins):
+The same pattern extends to any OpenAI-compatible provider — just point `OPENAI_BASE_URL` at its `/v1` endpoint.
 
-- **api key**: `LLM_API_KEY` > `DEEPSEEK_API_KEY` > `OPENAI_API_KEY`
-- **base URL**: `config.llm_base_url` > `LLM_BASE_URL` > `DEEPSEEK_BASE_URL` > `OPENAI_BASE_URL` > `https://api.deepseek.com/v1` (default)
-
-The `DEEPSEEK_*` keys are kept only for backward compatibility with the private system's default provider. The debate engine's config loader reads `.env` automatically (path via `DOTENV_PATH`, default `.env`) and only sets variables not already in the environment — so env vars always win. The `.env` file is gitignored, so your keys stay out of version control.
+> **Backward compatibility only.** `DEEPSEEK_API_KEY` / `DEEPSEEK_BASE_URL` (and `LLM_API_KEY` / `LLM_BASE_URL`) are still read, but only so the private system's default provider keeps working unchanged. As a public-repo user, ignore them and set `OPENAI_API_KEY` + `OPENAI_BASE_URL`.
 
 ## Repository Structure
 
@@ -165,37 +136,25 @@ grinderalpha/
 
 ## Core Modules
 
-### Bottom acceleration (`bottom_accelerator.py`)
+The deterministic layer is organized around the decision lifecycle. Every module is pure Python and runs on free public data unless noted; only the debate engine needs a key.
 
-Fits a log-linear trendline through confirmed historical bottoms, projects it to today, and classifies how far the current price sits below the trendline. The "hitting zone" is when price touches or breaks below the projected bottom — the deeper the discount, the larger the DCA (dollar-cost-averaging) multiplier. Each index is calibrated independently.
+| Stage | Module | What it does |
+|-------|--------|--------------|
+| **Buy** | `bottom_accelerator.py` | Fits a log-linear trendline through historical bottoms and sizes the DCA multiplier by how far below it the price sits (per-index calibration) |
+| **Buy** | `investment/methodologies/sniper_ah.py` | "Good company + extreme cheapness": PE back to its historical bottom **and** drawdown at extremes |
+| **Value** | `valuation_engine.py` | Per-category PE/PB percentile (broad / dividend / sector / AI-chain / HK), multi-source with graceful degradation |
+| **Protect** | `investment/support_levels.py` | S1/S2 support derived from real drawdown bottoms — protection, not a strike anchor |
+| **Protect** | `investment/sell_monitors/` | Sell / stop / rebuy through the `PositionProvider` interface (3 strategies) |
+| **Decide** | `investment/decision_report.py` | Unified `DecisionReport` schema: action + per-dimension checks + derivation `trace` |
+| **Enhance** | `investment/cboe_options.py` + `options_estimator.py` | Real CBOE chain (liquidity-gated) with a pure-Python Black-Scholes fallback |
+| **Verify** | `backtest/` | Unified runner → long-term return / win-rate / max drawdown, with a data-source declaration |
+| **Debate** | `investment/debate_engine/` | Multi-agent LLM debate (the only key-requiring module) |
 
-### Valuation (`valuation_engine.py`)
+Three details worth calling out, because this is where the engineering — not the "AI" — does the work:
 
-Per-category valuation — broad index, dividend, sector, AI-chain, and HK shares each use a different method. Multi-source with graceful degradation: the official China Securities Index site is the primary PE source, falling back to `akshare` (legulegu) and Danjuan snapshots when unavailable.
-
-### A/H sniper methodology (`investment/methodologies/sniper_ah.py`)
-
-"Good company + extreme cheapness → fire." Two independent anchors — PE returns to its historical bottom range, and drawdown touches historical extremes. Both satisfied means in range. Reads bottom profiles and Tencent real-time quotes.
-
-### Support levels (`investment/support_levels.py`)
-
-Extracts support from real historical drawdown bottoms rather than arbitrary multipliers. Support is protection, not a strike-price anchor: S1 is the highest bottom below current price, S2 the next-deeper one.
-
-### Options (`investment/cboe_options.py` + `options_estimator.py`)
-
-`cboe_options.py` fetches real CBOE delayed bid/ask mid-prices and enforces a liquidity gate (`bid=0` blocks). `options_estimator.py` is a pure-Python Black-Scholes fallback (no scipy), used only when the live chain is unavailable — estimation was demoted to a documented fallback after a live test proved it wrong by 55 percentage points.
-
-### Decision report (`investment/decision_report.py`)
-
-A zero-dependency schema that unifies every engine's output into one structured report: `DecisionReport` carries the recommended `Action` (BUY / ADD / HOLD / TRIM / EXIT / WAIT / REBUY), per-dimension checks, a derivation `trace`, and data-source info. `resolve_action` enforces a priority ladder — stop-loss beats everything, take-profit beats adding, adding beats new positions.
-
-### Sell monitors (`investment/sell_monitors/`)
-
-Three strategies — mean reversion, trend following, and index DCA — each reading positions through the `PositionProvider` interface. The public implementation (`DictPositionProvider`) accepts a plain dict; the production one (`DBPositionProvider`) is a lazy import and never triggers in the public repo.
-
-### Backtest (`backtest/`)
-
-A unified entry point — `python -m backtest.run <name>`. Each backtest is registered under a name and routed to pure-computation cores, outputting long-term return / win rate / max drawdown plus a data-source declaration.
+- **Support is protection.** `support_levels.py` derives S1/S2 from real historical drawdown bottoms, not arbitrary multipliers.
+- **Estimation is a fallback, not a promise.** `options_estimator.py` (pure-Python Black-Scholes) was demoted to a documented fallback after a live test showed it off by 55 percentage points against the real CBOE chain.
+- **Stop-loss beats everything.** `decision_report.resolve_action` enforces a priority ladder — stop-loss > take-profit > adding > new positions.
 
 ## Known Limitations
 

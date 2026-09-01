@@ -23,36 +23,14 @@ GrinderAlpha 把投资决策过程工程化为一个系统。从底部识别、�
 - **确定性引擎**（`investment/` + 顶层引擎）—— 规则与回测。底部加速、估值、支撑位、Black-Scholes。纯数学，零第三方依赖。
 - **LLM 辩论引擎**（`investment/debate_engine/`）—— 多智能体辩论，把原始数据转化为结构化决策。
 
+整条流水线，从左到右：
+
 ```mermaid
-flowchart TB
-    subgraph P["Provider 抽象层"]
-        direction LR
-        DA[DataAccess<br/>行情 / 估值]
-        PP[ParamProvider<br/>策略参数]
-        PR[ProfileProvider<br/>底部档案]
-        PO[PositionProvider<br/>持仓]
-    end
-
-    subgraph E["确定性引擎 · 纯 Python · 零依赖"]
-        direction LR
-        BA[底部加速]
-        VE[估值引擎]
-        SN[狙击方法论]
-        SL[支撑位]
-        OP[期权]
-        SM[卖出监控]
-        BT[回测]
-    end
-
-    DR[DecisionReport<br/>统一决策报告]
-
-    subgraph D["LLM 辩论引擎 · OpenAI 兼容"]
-        DE[多智能体辩论]
-    end
-
-    P --> E --> DR
-    E --> D
-    DR --> D
+flowchart LR
+    P["Providers<br/>数据 · 参数 · 档案 · 持仓"] --> E["确定性引擎<br/>底部 · 估值 · 狙击 · 支撑 · 卖出监控 · 回测"]
+    E --> R["DecisionReport<br/>统一 schema · 推导链"]
+    R --> D["LLM 辩论引擎<br/>多智能体 · 对抗式"]
+    D --> O["建议<br/>非订单"]
 ```
 
 辩论引擎按流水线编排多个 LLM 智能体：
@@ -104,41 +82,34 @@ python -m backtest.run entry_signal --symbol sh000300  # 对沪深300跑一个
 
 ## 配置
 
-大多数功能不需要 API key —— 只有 LLM 辩论引擎需要。
+所有功能都跑在免费公开数据上，无需 key —— 只有 LLM 辩论引擎需要一个。
 
 | 功能 | 需要的 Key | 说明 |
 |------|-----------|------|
 | 确定性引擎（底部、估值、支撑、期权） | 无 | 免费公开数据（腾讯行情、CBOE） |
 | 估值数据兜底 | 无 | `akshare`（legulegu / 蛋卷），免费 |
-| `investment/debate_engine/`（LLM 辩论） | `OPENAI_API_KEY`（或任意 OpenAI 兼容 key） | Provider 无关；DeepSeek 为默认回退 |
+| `investment/debate_engine/`（LLM 辩论） | `OPENAI_API_KEY` + `OPENAI_BASE_URL` | 任意 OpenAI 兼容端点 |
 
-### 设置 Key
+### LLM 后端（仅辩论引擎）
 
-辩论引擎使用 OpenAI 兼容客户端（`langchain_openai.ChatOpenAI`），因此**任意 OpenAI 兼容端点**均可 —— OpenAI、DeepSeek、或自托管 vLLM。
-
-两种方式任选其一：
-
-**方式一 —— 环境变量：**
+辩论引擎使用 OpenAI 兼容客户端（`langchain_openai.ChatOpenAI`），因此任何讲 OpenAI `/v1` 协议的端点都能用 —— OpenAI、DeepSeek、Qwen、GLM，或自托管 vLLM / LM Studio。设置两个变量：
 
 ```bash
 export OPENAI_API_KEY=sk-...
-export OPENAI_BASE_URL=https://api.openai.com/v1   # 或你自己的端点
+export OPENAI_BASE_URL=https://api.openai.com/v1
 ```
 
-**方式二 —— `.env` 文件**（辩论引擎自动加载）：
+常见端点：
 
-```bash
-# 项目根目录的 .env
-OPENAI_API_KEY=sk-...
-OPENAI_BASE_URL=https://api.openai.com/v1
-```
+| Provider | `OPENAI_BASE_URL` |
+|----------|-------------------|
+| OpenAI | `https://api.openai.com/v1` |
+| DeepSeek | `https://api.deepseek.com/v1` |
+| 自托管 vLLM / LM Studio | `http://localhost:8000/v1` |
 
-解析优先级（先命中者胜）：
+同样的方式适用于任何 OpenAI 兼容 provider —— 把 `OPENAI_BASE_URL` 指向它的 `/v1` 端点即可。
 
-- **api key**：`LLM_API_KEY` > `DEEPSEEK_API_KEY` > `OPENAI_API_KEY`
-- **base URL**：`config.llm_base_url` > `LLM_BASE_URL` > `DEEPSEEK_BASE_URL` > `OPENAI_BASE_URL` > `https://api.deepseek.com/v1`（默认）
-
-`DEEPSEEK_*` 仅用于与私有系统默认 provider 的向后兼容。辩论引擎的配置加载器会自动读取 `.env`（路径经 `DOTENV_PATH`，默认 `.env`），且只设置环境里没有的变量 —— 所以环境变量始终优先。`.env` 文件已 gitignore，密钥不会进入版本控制。
+> **仅向后兼容。** `DEEPSEEK_API_KEY` / `DEEPSEEK_BASE_URL`（以及 `LLM_API_KEY` / `LLM_BASE_URL`）仍会被读取，但只是为了私有系统默认 provider 能无改动地继续工作。作为公开库用户，忽略它们，设置 `OPENAI_API_KEY` + `OPENAI_BASE_URL` 即可。
 
 ## 仓库结构
 
@@ -165,37 +136,25 @@ grinderalpha/
 
 ## 核心模块
 
-### 底部加速（`bottom_accelerator.py`）
+确定性层围绕决策生命周期组织。每个模块都是纯 Python、跑在免费公开数据上（除非特别标注）；只有辩论引擎需要 key。
 
-对已确认的历史大底拟合对数线性趋势线，投影到当下，判定当前价格偏离趋势线的程度。当价格触及或跌破投影底部即为「击球区」——折扣越深，DCA（定投）倍率越大。各指数独立校准。
+| 阶段 | 模块 | 作用 |
+|------|------|------|
+| **买入** | `bottom_accelerator.py` | 对历史大底拟合对数线性趋势线，按价格低于趋势线的深度确定 DCA 倍率（各指数独立校准） |
+| **买入** | `investment/methodologies/sniper_ah.py` | 「好公司 + 极端便宜」：PE 回到历史底部区间，且回撤触及极值 |
+| **估值** | `valuation_engine.py` | 分类型 PE/PB 百分位（宽基 / 红利 / 行业 / AI 链 / 港股），多源优雅降级 |
+| **保护** | `investment/support_levels.py` | 从真实历史回撤底部提取 S1/S2 —— 支撑是保护，不是行权价的锚 |
+| **保护** | `investment/sell_monitors/` | 通过 `PositionProvider` 接口执行卖出 / 止损 / 回补（3 个策略） |
+| **决策** | `investment/decision_report.py` | 统一 `DecisionReport` schema：动作 + 逐维度检查 + 推导链 `trace` |
+| **增强** | `investment/cboe_options.py` + `options_estimator.py` | 真实 CBOE 期权链（流动性门槛）+ 纯 Python Black-Scholes 兜底 |
+| **验证** | `backtest/` | 统一入口 → 长期收益 / 胜率 / 最大回撤，附带数据来源声明 |
+| **辩论** | `investment/debate_engine/` | 多智能体 LLM 辩论（唯一需要 key 的模块） |
 
-### 估值（`valuation_engine.py`）
+三点值得单独说明，因为这是「工程」而非「AI」真正起作用的地方：
 
-分类型估值 —— 宽基、红利、行业、AI 链、港股各用不同方法。多源优雅降级：中证指数官网为主 PE 源，不可用时回退 `akshare`（legulegu）与蛋卷快照。
-
-### A/H 狙击方法论（`investment/methodologies/sniper_ah.py`）
-
-「好公司 + 极端便宜 → 开枪」。两个独立锚 —— PE 回到历史底部区间、回撤触及历史极值。双条件满足即在射程。读取底部档案与腾讯实时价格。
-
-### 支撑位（`investment/support_levels.py`）
-
-从真实历史回撤底部提取支撑，而非任意乘数。支撑是保护，不是行权价的锚：S1 是现价下方最近的历史回撤底部，S2 是次深的一道防线。
-
-### 期权（`investment/cboe_options.py` + `options_estimator.py`）
-
-`cboe_options.py` 拉取 CBOE 延迟 bid/ask 中间价，并强制流动性门槛（`bid=0` 阻断）。`options_estimator.py` 是纯 Python Black-Scholes 兜底（无 scipy），仅在实时链不可用时启用 —— 一次实盘测试证明估算偏差高达 55 个百分点后，估算被降级为文档化的兜底路径。
-
-### 决策报告（`investment/decision_report.py`）
-
-零依赖 schema，把每个引擎的输出统一为一份结构化报告：`DecisionReport` 携带推荐的 `Action`（BUY / ADD / HOLD / TRIM / EXIT / WAIT / REBUY）、逐维度检查、推导链 `trace` 与数据源信息。`resolve_action` 执行优先级阶梯 —— 止损压一切、止盈压加仓、加仓压建仓。
-
-### 卖出监控（`investment/sell_monitors/`）
-
-三个策略 —— 均值回归、趋势跟踪、指数定投 —— 各自通过 `PositionProvider` 接口读持仓。公开实现（`DictPositionProvider`）接受普通 dict；生产实现（`DBPositionProvider`）是延迟导入，公开库不会触发。
-
-### 回测（`backtest/`）
-
-统一入口 —— `python -m backtest.run <name>`。每个回测注册一个名字，路由到纯计算核心，输出长期收益 / 胜率 / 最大回撤外加数据来源声明。
+- **支撑是保护。** `support_levels.py` 从真实历史回撤底部提取 S1/S2，而非任意乘数。
+- **估算是兜底，不是承诺。** `options_estimator.py`（纯 Python Black-Scholes）在一次实盘测试证明比真实 CBOE 链偏差 55 个百分点后，被降级为文档化的兜底路径。
+- **止损压一切。** `decision_report.resolve_action` 执行优先级阶梯 —— 止损 > 止盈 > 加仓 > 建仓。
 
 ## 已知限制
 
